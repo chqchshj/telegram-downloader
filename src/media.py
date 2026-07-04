@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.security.sanitizer import sanitize_filename
+
 if TYPE_CHECKING:
     from pyrogram.types import Message
 
@@ -50,9 +52,31 @@ def get_caption_text(message: Message) -> str:
 
 def parse_caption_episode(caption: str) -> CaptionEpisode | None:
     """Parse captions like ``美丽新世界 EP-1 樱花道偶遇``."""
+    episodes = parse_caption_episodes(caption)
+    return episodes[0] if episodes else None
+
+
+def parse_caption_episodes(caption: str) -> list[CaptionEpisode]:
+    """Parse all short-drama episode lines from a Telegram caption."""
+    episodes: list[CaptionEpisode] = []
+
+    for raw_line in caption.splitlines():
+        line = re.sub(r"^[^\w]+", "", raw_line.strip())
+        if not line:
+            continue
+
+        episode = _parse_episode_line(line)
+        if episode:
+            episodes.append(episode)
+
+    return episodes
+
+
+def _parse_episode_line(line: str) -> CaptionEpisode | None:
+    """Parse one caption line into series, normalized EP marker, and title."""
     match = re.search(
         r"^\s*(?P<series>.+?)\s+(?P<episode>EP\s*[-_ ]?\s*\d+)\s*(?P<title>.*)$",
-        caption,
+        line,
         flags=re.IGNORECASE,
     )
     if not match:
@@ -68,6 +92,21 @@ def parse_caption_episode(caption: str) -> CaptionEpisode | None:
         episode=episode,
         title=match.group("title").strip(),
     )
+
+
+def build_episode_filename(episode: CaptionEpisode, ext: str) -> str:
+    """Build a standardized short-drama episode filename."""
+    suffix = ext if not ext or ext.startswith(".") else f".{ext}"
+    number_match = re.search(r"\d+", episode.episode)
+    number = int(number_match.group(0)) if number_match else 0
+    parts = [
+        episode.series,
+        f"EP{number:02d}",
+    ]
+    if episode.title:
+        parts.append(episode.title)
+
+    return sanitize_filename("_".join(parts) + suffix)
 
 
 def _extension_from_mime(mime_type: str | None) -> str:
@@ -131,8 +170,7 @@ def build_fallback_filename(message: Message, media: Any | None = None) -> str:
 
     if caption:
         if episode:
-            title = f"_{episode.title}" if episode.title else ""
-            return f"{episode.series}_{episode.episode}{title}{ext}"
+            return build_episode_filename(episode, ext)
         return f"{caption}{ext}"
 
     return f"message_{message.id}{ext}"

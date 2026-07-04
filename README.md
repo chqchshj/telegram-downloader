@@ -108,6 +108,34 @@ All configuration is done via environment variables with the `TDL_` prefix. See 
 - TDL_GLOBAL_FILTERS_ONLY_BEFORE=2026-07-01T00:00:00+08:00
 ```
 
+Short-drama catalog captions with multiple episode lines are recognized:
+
+```text
+美丽新世界 EP-1 樱花道偶遇
+美丽新世界 EP-2 误入厕所成变态
+```
+
+Episode filenames are normalized as `美丽新世界_EP01_樱花道偶遇.mp4`, preserving Chinese text while cleaning unsafe filesystem characters.
+
+To safely rename historical downloads from a catalog caption, save the caption text and run the offline renamer. It defaults to dry-run:
+
+```bash
+python -m src.tools.short_drama_renamer \
+  --downloads-dir /vol3/1000/downloads/AI短剧 \
+  --catalog-caption-file /tmp/catalog.txt
+```
+
+When the plan looks correct, apply it:
+
+```bash
+python -m src.tools.short_drama_renamer \
+  --downloads-dir /vol3/1000/downloads/AI短剧 \
+  --catalog-caption-file /tmp/catalog.txt \
+  --apply
+```
+
+If you have the downloader state database, pass `--state-db /path/to/state.db` to order videos by Telegram `message_id`; otherwise files are ordered by modification time with filename as the fallback. Existing target files are never overwritten; conflicts receive `_2`, `_3`, and so on.
+
 ### Daemon Mode
 
 ```yaml
