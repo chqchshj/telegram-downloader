@@ -444,9 +444,14 @@ async def main():
     pending = PendingDownloads(str(state_db_path))
     log.info("Pending downloads queue initialized")
 
-    # Initialize runtime short-drama catalog state
-    short_drama_state = ShortDramaState(str(state_db_path))
-    log.info("Short-drama runtime naming state initialized")
+    # Initialize runtime short-drama catalog state only when explicitly enabled.
+    # For plain archival downloads, keep original/date-based Telegram filenames.
+    short_drama_enabled = os.getenv("TDL_SHORT_DRAMA_ENABLED", "false").lower() in {"1", "true", "yes"}
+    short_drama_state = ShortDramaState(str(state_db_path)) if short_drama_enabled else None
+    if short_drama_state:
+        log.info("Short-drama runtime naming state initialized")
+    else:
+        log.info("Short-drama runtime naming disabled; using original Telegram filenames")
 
     # Log credentials for debugging (mask sensitive parts)
     log.debug("=" * 50)
@@ -543,7 +548,8 @@ async def main():
         if history:
             history.close()
         pending.close()
-        short_drama_state.close()
+        if short_drama_state:
+            short_drama_state.close()
         state_store.close()
         log.info("Execution complete")
 
