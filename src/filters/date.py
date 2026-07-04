@@ -5,9 +5,15 @@ Filters messages based on date range, allowing users to catch up from
 a specific point in time or only download recent content.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
-from pyrogram.types import Message
+from typing import TYPE_CHECKING
+
 from src.filters.base import BaseFilter
+
+if TYPE_CHECKING:
+    from pyrogram.types import Message
 
 
 class DateFilter(BaseFilter):
@@ -61,6 +67,8 @@ class DateFilter(BaseFilter):
             return False
 
         msg_date = message.date
+        if msg_date.tzinfo is None:
+            msg_date = msg_date.replace(tzinfo=timezone.utc)
 
         # Check minimum date constraint
         if self.only_after is not None and msg_date < self.only_after:

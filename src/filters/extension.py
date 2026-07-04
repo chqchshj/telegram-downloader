@@ -5,9 +5,14 @@ Filters messages based on file extensions, extracted from the
 current downloader.py looks_like_ebook logic.
 """
 
-from typing import Iterable
-from pyrogram.types import Message
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Iterable
 from src.filters.base import BaseFilter
+from src.media import get_media_filename, get_message_media
+
+if TYPE_CHECKING:
+    from pyrogram.types import Message
 
 
 def _endswith_any(name: str, exts: Iterable[str]) -> bool:
@@ -66,24 +71,13 @@ class ExtensionFilter(BaseFilter):
         Returns:
             True if message has media with allowed extension
         """
-        # Get media object (document, audio, video, etc.)
-        media_obj = (
-            message.document or
-            message.audio or
-            message.video or
-            message.animation or
-            message.voice or
-            message.video_note
-        )
+        media_obj = get_message_media(message)
 
         if not media_obj:
             return False
 
         # Extract filename
-        fname = getattr(media_obj, "file_name", None)
-        if not fname:
-            # Generate fallback filename from MIME type
-            fname = self._generate_fallback_filename(message, media_obj)
+        fname = get_media_filename(message, media_obj)
 
         # Check against allowed extensions
         if _endswith_any(fname, self.ebook_exts):
@@ -107,18 +101,4 @@ class ExtensionFilter(BaseFilter):
         Returns:
             Generated filename with extension
         """
-        ext = ""
-        mime = (getattr(media_obj, "mime_type", "") or "").lower()
-
-        if "pdf" in mime:
-            ext = ".pdf"
-        elif "epub" in mime:
-            ext = ".epub"
-        elif "zip" in mime:
-            ext = ".zip"
-        elif "rar" in mime:
-            ext = ".rar"
-        elif "7z" in mime:
-            ext = ".7z"
-
-        return f"message_{message.id}{ext}"
+        return get_media_filename(message, media_obj)

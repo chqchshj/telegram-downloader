@@ -47,6 +47,8 @@ class TestModuleImports:
             "src.daemon.service",
             # Client module
             "src.client.factory",
+            # Web module
+            "src.web.app",
         ]
 
         for module in modules_to_import:

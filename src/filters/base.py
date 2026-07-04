@@ -6,8 +6,13 @@ configurable criteria. Multiple filters can be composed together
 for complex selection logic.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from pyrogram.types import Message
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pyrogram.types import Message
 
 
 class BaseFilter(ABC):

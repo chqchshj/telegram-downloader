@@ -111,6 +111,11 @@ class TestSanitizeFilenameSpecialCharacters:
         assert "-" in result
         assert "_" in result
 
+    def test_preserves_chinese_characters(self):
+        """Chinese filenames and source folders should remain readable."""
+        result = sanitize_filename("美丽新世界 EP-1 樱花道偶遇.mp4")
+        assert result == "美丽新世界_EP-1_樱花道偶遇.mp4"
+
 
 class TestSanitizeFilenameTruncation:
     """Filename length truncation."""

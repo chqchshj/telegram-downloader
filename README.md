@@ -26,8 +26,10 @@ Telegram is great for sharing files, but manually downloading from multiple sour
 |---------|-------------|
 | **Multi-Source** | Channels, groups, supergroups, forum topics, private chats |
 | **Smart Filtering** | By extension, file size, date range, filename patterns |
+| **Photos & Video** | Native Telegram photos plus document/video/audio media |
 | **Auto-Organization** | Per-source folders, duplicate detection, conflict resolution, persistent download tracking |
 | **Daemon Mode** | Runs continuously with configurable check intervals |
+| **Web Config** | Optional FastAPI panel for editing the YAML config |
 | **Notifications** | Discord webhooks, generic HTTP POST |
 | **Docker Native** | Multi-arch images (amd64/arm64), health checks, non-root |
 
@@ -99,6 +101,11 @@ All configuration is done via environment variables with the `TDL_` prefix. See 
 
 # Global defaults (apply to all sources)
 - TDL_GLOBAL_FILTERS_EXTENSIONS=.pdf,.epub
+
+# Short-drama media with native Telegram photos
+- TDL_GLOBAL_FILTERS_EXTENSIONS=.mp4,.jpg,.jpeg,.png,.webp
+- TDL_GLOBAL_FILTERS_ONLY_AFTER=2026-06-18T00:00:00+08:00
+- TDL_GLOBAL_FILTERS_ONLY_BEFORE=2026-07-01T00:00:00+08:00
 ```
 
 ### Daemon Mode
@@ -129,10 +136,47 @@ All configuration is done via environment variables with the `TDL_` prefix. See 
 # Store all files in download_dir without per-channel subfolders
 - TDL_FLAT_STRUCTURE=true
 
+# Preserve readable folder names, including Chinese source names
+- TDL_SOURCES_0_NAME=美丽新世界
+
 # Persistent download tracking (enabled by default)
 # When enabled, files won't be re-downloaded after being moved/renamed
 - TDL_TRACK_DOWNLOADS=true
 ```
+
+### MTProto Proxy
+
+Pyrogram does not use generic `HTTP_PROXY`/`HTTPS_PROXY` variables for MTProto traffic. Configure the client proxy with `TDL_PROXY_*`:
+
+```yaml
+- TDL_PROXY_ENABLED=true
+- TDL_PROXY_SCHEME=socks5
+- TDL_PROXY_HOST=192.168.2.20
+- TDL_PROXY_PORT=40000
+# Optional:
+- TDL_PROXY_USERNAME=
+- TDL_PROXY_PASSWORD=
+```
+
+The default home WARP SOCKS5 example is `socks5://192.168.2.20:40000`.
+
+### Web Config Panel
+
+Run the optional panel with Uvicorn:
+
+```bash
+uvicorn src.web.app:app --host 127.0.0.1 --port 8080
+```
+
+Endpoints:
+
+- `GET /` static configuration page
+- `GET /api/config` returns redacted YAML config as JSON
+- `POST /api/config` validates and atomically writes YAML
+- `GET /api/status` returns health, cursor/pending state, and recent logs when available
+- `POST /api/restart` returns a restart reminder
+
+Set `TDL_CONFIG_FILE=/app/config.yaml` to choose the YAML path. Set `TDL_WEB_TOKEN` when exposing the panel beyond localhost; use `Authorization: Bearer <token>`. Any `TDL_` environment variables still override YAML at runtime, so the panel shows a warning when overrides are present.
 
 ## Examples
 
@@ -144,6 +188,7 @@ Complete Docker Compose configurations for common use cases:
 | [youtube-archiver.yml](examples/youtube-archiver.yml) | Archive YouTube mirror channels |
 | [news-aggregator.yml](examples/news-aggregator.yml) | Aggregate media from news channels |
 | [personal-backup.yml](examples/personal-backup.yml) | Backup your saved messages |
+| [docker-compose.example.yml](docker-compose.example.yml) | Downloader plus Web panel, sessions, config volume, and WARP SOCKS5 proxy |
 
 ## Docker Images
 

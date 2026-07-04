@@ -11,6 +11,7 @@ from pyrogram import Client, raw
 from pyrogram.types import Message
 from pyrogram.enums import MessagesFilter
 
+from src.media import get_message_media
 from src.sources.base import BaseSource
 
 
@@ -171,14 +172,7 @@ class ForumTopicSource(BaseSource):
                     continue
 
                 # Yield messages with media attachments
-                if (
-                    m.document or
-                    m.audio or
-                    m.video or
-                    m.animation or
-                    m.voice or
-                    m.video_note
-                ):
+                if get_message_media(m):
                     yield m
 
             if len(buf) < batch_size:

@@ -75,6 +75,19 @@ class TestExtensionFilterBasics:
         msg = mock_message(file_name="Book.Pdf")
         assert await filter.matches(msg) is True
 
+    @pytest.mark.asyncio
+    async def test_matches_native_photo_extension(self, mock_message, mock_photo):
+        """Native Telegram photos should use a .jpg fallback name."""
+        filter = ExtensionFilter(
+            ebook_exts=[".jpg", ".mp4"],
+            allow_archives=False,
+            archive_exts=[],
+        )
+
+        msg = mock_message(id=12, has_document=False, photo=mock_photo())
+
+        assert await filter.matches(msg) is True
+
 
 class TestExtensionFilterArchives:
     """Archive handling in ExtensionFilter."""

@@ -1,6 +1,6 @@
 """Health status monitoring for daemon process."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class HealthMonitor:
         self.health_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Prepare content with timestamp
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         content = f"{status}\n{timestamp}\n"
 
         # Atomic write: temp file + rename

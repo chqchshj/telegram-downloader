@@ -15,6 +15,7 @@ from src.config.schema import (
     GlobalFilters,
     DaemonConfig,
     NotificationConfig,
+    ProxyConfig,
     RetryConfig,
 )
 
@@ -217,6 +218,37 @@ class TestGlobalFilters:
         filters = GlobalFilters.model_validate({})
         assert filters.include_patterns == []
         assert filters.exclude_patterns == []
+
+
+class TestProxyConfig:
+    """Tests for MTProto proxy schema."""
+
+    def test_disabled_by_default(self):
+        proxy = ProxyConfig.model_validate({})
+        assert proxy.enabled is False
+        assert proxy.to_pyrogram_proxy() is None
+
+    def test_enabled_proxy_to_pyrogram_dict(self):
+        proxy = ProxyConfig.model_validate({
+            "enabled": True,
+            "scheme": "socks5",
+            "host": "192.168.2.20",
+            "port": 40000,
+            "username": "user",
+            "password": "pass",
+        })
+
+        assert proxy.to_pyrogram_proxy() == {
+            "scheme": "socks5",
+            "hostname": "192.168.2.20",
+            "port": 40000,
+            "username": "user",
+            "password": "pass",
+        }
+
+    def test_enabled_proxy_requires_endpoint(self):
+        with pytest.raises(ValidationError):
+            ProxyConfig.model_validate({"enabled": True})
 
 
 class TestDaemonConfig:

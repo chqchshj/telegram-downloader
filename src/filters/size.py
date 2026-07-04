@@ -5,8 +5,15 @@ Filters messages based on file size range, allowing users to avoid
 tiny files (samples, covers) or huge files (audiobooks, videos).
 """
 
-from pyrogram.types import Message
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from src.filters.base import BaseFilter
+from src.media import get_message_media
+
+if TYPE_CHECKING:
+    from pyrogram.types import Message
 
 
 class SizeFilter(BaseFilter):
@@ -41,15 +48,7 @@ class SizeFilter(BaseFilter):
         Returns:
             True if message has media within configured size range
         """
-        # Get media object (same types as ExtensionFilter)
-        media_obj = (
-            message.document or
-            message.audio or
-            message.video or
-            message.animation or
-            message.voice or
-            message.video_note
-        )
+        media_obj = get_message_media(message)
 
         if not media_obj:
             return False

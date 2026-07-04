@@ -12,7 +12,7 @@ Line 2: ISO timestamp of last update
 """
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 HEALTH_FILE = Path(os.getenv("TDL_DAEMON_HEALTH_FILE", "/app/health_status.txt"))
@@ -41,8 +41,11 @@ def main():
             print(f"Invalid timestamp: {timestamp_str}", file=sys.stderr)
             sys.exit(1)
 
-        # Check if status is stale
-        age = datetime.now() - timestamp
+        # Check if status is stale. Treat legacy naive timestamps as UTC because
+        # older daemon builds wrote datetime.utcnow().isoformat().
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)
         if age.total_seconds() > MAX_AGE_SECONDS:
             print(f"Health status stale ({age.total_seconds():.0f}s old)", file=sys.stderr)
             sys.exit(1)

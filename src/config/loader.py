@@ -42,6 +42,7 @@ LIST_FIELDS = {
 BOOL_FIELDS = {
     "enabled",
     "allow_archives",
+    "flat_structure",
     "test_mode",
     "track_downloads",
 }
@@ -58,10 +59,11 @@ INT_FIELDS = {
     "max_retries",
     "base_delay",
     "max_delay",
+    "port",
 }
 
 # Field name endings that indicate integers (for nested fields)
-INT_SUFFIXES = {"_id", "_interval", "_seconds", "_downloads", "_retries", "_delay"}
+INT_SUFFIXES = {"_id", "_interval", "_seconds", "_downloads", "_retries", "_delay", "_port"}
 
 # Top-level fields that should NOT be nested (underscore is part of name)
 FLAT_FIELDS = {
@@ -87,6 +89,7 @@ FLAT_FIELDS = {
     "allow_archives",
     "archive_exts",
     "track_downloads",
+    "flat_structure",
 }
 
 # Two-level nested fields (parent_child format)
@@ -106,6 +109,17 @@ NESTED_MAPPINGS = {
     "global_filters_archive_exts": ("global_filters", "archive_exts"),
     "global_filters_min_size": ("global_filters", "min_size"),
     "global_filters_max_size": ("global_filters", "max_size"),
+    "global_filters_only_after": ("global_filters", "only_after"),
+    "global_filters_only_before": ("global_filters", "only_before"),
+    "global_filters_include_patterns": ("global_filters", "include_patterns"),
+    "global_filters_exclude_patterns": ("global_filters", "exclude_patterns"),
+    "proxy_enabled": ("proxy", "enabled"),
+    "proxy_scheme": ("proxy", "scheme"),
+    "proxy_host": ("proxy", "host"),
+    "proxy_hostname": ("proxy", "host"),
+    "proxy_port": ("proxy", "port"),
+    "proxy_username": ("proxy", "username"),
+    "proxy_password": ("proxy", "password"),
 }
 
 

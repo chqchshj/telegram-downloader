@@ -39,6 +39,20 @@ class MockDocument:
         self.file_unique_id = file_unique_id
 
 
+class MockPhoto:
+    """Mock Pyrogram Photo object for testing."""
+
+    def __init__(
+        self,
+        file_size: int = 204800,
+        file_id: str = "photo123",
+        file_unique_id: str = "unique_photo123",
+    ):
+        self.file_size = file_size
+        self.file_id = file_id
+        self.file_unique_id = file_unique_id
+
+
 class MockMessage:
     """Mock Pyrogram Message object for testing."""
 
@@ -51,8 +65,10 @@ class MockMessage:
         animation: Any = None,
         voice: Any = None,
         video_note: Any = None,
+        photo: Any = None,
         date: datetime | None = None,
         text: str | None = None,
+        caption: str | None = None,
     ):
         self.id = id
         self.document = document
@@ -61,8 +77,10 @@ class MockMessage:
         self.animation = animation
         self.voice = voice
         self.video_note = video_note
+        self.photo = photo
         self.date = date or datetime.now()
         self.text = text
+        self.caption = caption
 
 
 @pytest.fixture
@@ -84,6 +102,14 @@ def mock_document():
 
 
 @pytest.fixture
+def mock_photo():
+    """Factory for creating mock Photo objects."""
+    def _create(file_size: int = 204800) -> MockPhoto:
+        return MockPhoto(file_size=file_size)
+    return _create
+
+
+@pytest.fixture
 def mock_message(mock_document):
     """Factory for creating mock Message objects with documents."""
     def _create(
@@ -94,6 +120,8 @@ def mock_message(mock_document):
         date: datetime | None = None,
         has_document: bool = True,
         document: MockDocument | None = None,
+        photo: MockPhoto | None = None,
+        caption: str | None = None,
     ) -> MockMessage:
         doc = document
         if has_document and doc is None:
@@ -105,7 +133,9 @@ def mock_message(mock_document):
         return MockMessage(
             id=id,
             document=doc,
+            photo=photo,
             date=date,
+            caption=caption,
         )
     return _create
 

@@ -42,6 +42,19 @@ class TestBuildDestinationPathDefault:
         assert result.name == "book.epub"
 
     @pytest.mark.asyncio
+    async def test_preserves_chinese_source_name(self, temp_dir):
+        """Chinese source names should be kept for short-drama folders."""
+        source = MockSource(display_name="Telegram Name")
+        config = SourceConfig(url="https://t.me/test", name="美丽新世界")
+
+        result = await build_destination_path(
+            temp_dir, source, "第1集.mp4", config, flat_structure=False
+        )
+
+        assert result.parent.name == "美丽新世界"
+        assert result.name == "第1集.mp4"
+
+    @pytest.mark.asyncio
     async def test_uses_display_name_when_no_config_name(self, temp_dir):
         """Should use source display name when config.name is not set."""
         source = MockSource(display_name="Book Club Channel")

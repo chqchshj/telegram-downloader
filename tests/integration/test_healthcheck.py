@@ -7,7 +7,7 @@ import subprocess
 import sys
 import os
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -99,7 +99,7 @@ class TestHealthcheckStaleness:
         health_file = temp_dir / "health_status.txt"
 
         # Timestamp more than 10 minutes ago
-        old_timestamp = datetime.now() - timedelta(minutes=15)
+        old_timestamp = (datetime.now(timezone.utc) - timedelta(minutes=15)).replace(tzinfo=None)
         health_file.write_text(f"healthy\n{old_timestamp.isoformat()}")
 
         env = os.environ.copy()
@@ -114,6 +114,24 @@ class TestHealthcheckStaleness:
 
         assert result.returncode == 1
         assert "stale" in result.stderr.lower()
+
+    def test_utc_aware_timestamp_with_local_tz_exits_zero(self, temp_dir, monkeypatch):
+        """UTC-aware health timestamps should not be compared to local naive time."""
+        health_file = temp_dir / "health_status.txt"
+        health_file.write_text(f"healthy\n{datetime.now(timezone.utc).isoformat()}")
+
+        env = os.environ.copy()
+        env["TDL_DAEMON_HEALTH_FILE"] = str(health_file)
+        env["TZ"] = "Asia/Shanghai"
+
+        result = subprocess.run(
+            [sys.executable, str(HEALTHCHECK_SCRIPT)],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        assert result.returncode == 0
 
 
 class TestHealthcheckFileFormat:

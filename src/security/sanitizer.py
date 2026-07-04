@@ -16,7 +16,7 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     """
     Sanitize filename using whitelist approach for maximum security.
 
-    Only allows: [a-zA-Z0-9._-] characters
+    Only allows Unicode word characters plus [._-]
     - Strips leading/trailing whitespace and dots
     - Replaces path separators and null bytes with underscore
     - Preserves file extension if present
@@ -65,12 +65,12 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
     name = name.replace("\\", "_")
     name = name.replace("\x00", "_")
 
-    # Whitelist: only allow alphanumeric, dots, underscores, hyphens
-    # This is the safest approach - explicitly allow known-safe characters
-    name = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
+    # Whitelist: allow Unicode word characters so Chinese names survive, plus
+    # dots, underscores, and hyphens. Spaces/punctuation become underscores.
+    name = re.sub(r"[^\w._-]", "_", name)
 
     # Also sanitize the extension
-    extension = re.sub(r"[^a-zA-Z0-9._-]", "_", extension)
+    extension = re.sub(r"[^\w._-]", "_", extension)
 
     # Reconstruct filename
     result = name + extension

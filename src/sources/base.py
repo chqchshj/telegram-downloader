@@ -6,10 +6,14 @@ Telegram source types. Each source type (forum topic, channel, group,
 private chat) implements this interface with source-specific logic.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
-from pyrogram import Client
-from pyrogram.types import Message
+from typing import TYPE_CHECKING, AsyncIterator
+
+if TYPE_CHECKING:
+    from pyrogram import Client
+    from pyrogram.types import Message
 
 
 class BaseSource(ABC):

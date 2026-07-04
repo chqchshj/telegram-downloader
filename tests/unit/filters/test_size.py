@@ -52,6 +52,15 @@ class TestSizeFilterBasics:
         msg = mock_message(file_size=10000)
         assert await filter.matches(msg) is True
 
+    @pytest.mark.asyncio
+    async def test_native_photo_size(self, mock_message, mock_photo):
+        """Native Telegram photos should be size-filtered."""
+        filter = SizeFilter(min_bytes=1000, max_bytes=10000)
+
+        msg = mock_message(has_document=False, photo=mock_photo(file_size=5000))
+
+        assert await filter.matches(msg) is True
+
 
 class TestSizeFilterOptionalBounds:
     """Optional min/max bounds."""

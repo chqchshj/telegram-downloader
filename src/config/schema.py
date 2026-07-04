@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
 class RetryConfig(BaseModel):
@@ -68,6 +68,47 @@ class GlobalFilters(BaseModel):
     exclude_patterns: list[str] = Field(default_factory=list)
 
 
+class ProxyConfig(BaseModel):
+    """MTProto proxy configuration for Pyrogram."""
+    enabled: bool = Field(default=False)
+    scheme: Literal["socks5", "http"] = Field(default="socks5")
+    host: Optional[str] = None
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_hostname_alias(cls, data):
+        """Accept both host and Pyrogram-style hostname in YAML/Web payloads."""
+        if isinstance(data, dict) and "host" not in data and "hostname" in data:
+            data = dict(data)
+            data["host"] = data.pop("hostname")
+        return data
+
+    @model_validator(mode="after")
+    def validate_enabled_proxy(self):
+        """Require endpoint fields only when proxying is enabled."""
+        if self.enabled and (not self.host or self.port is None):
+            raise ValueError("proxy host and port are required when proxy is enabled")
+        return self
+
+    def to_pyrogram_proxy(self) -> dict[str, object] | None:
+        """Return Pyrogram Client(proxy=...) kwargs or None when disabled."""
+        if not self.enabled:
+            return None
+        proxy: dict[str, object] = {
+            "scheme": self.scheme,
+            "hostname": self.host,
+            "port": self.port,
+        }
+        if self.username:
+            proxy["username"] = self.username
+        if self.password:
+            proxy["password"] = self.password
+        return proxy
+
+
 class SourceConfig(BaseModel):
     """Source configuration for Telegram chats (multi-source format)."""
     url: Optional[str] = None  # t.me URL
@@ -120,6 +161,7 @@ class Config(BaseModel):
     sources: list[SourceConfig] = Field(default_factory=list)
     global_filters: GlobalFilters = Field(default_factory=GlobalFilters)
     max_concurrent_downloads: int = Field(default=1, ge=1, le=10)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
 
     # Daemon mode configuration
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)

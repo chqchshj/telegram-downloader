@@ -5,8 +5,14 @@ Combines multiple filters with AND logic, allowing flexible
 combinations like: "PDF files, 1-10MB, from last week".
 """
 
-from pyrogram.types import Message
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from src.filters.base import BaseFilter
+
+if TYPE_CHECKING:
+    from pyrogram.types import Message
 
 
 class CompositeFilter(BaseFilter):

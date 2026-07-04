@@ -1,0 +1,45 @@
+services:
+  telegram-downloader:
+    build: .
+    image: telegram-downloader:fork
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      PUID: 1000
+      PGID: 1000
+      TDL_CONFIG_FILE: /app/config.yaml
+      TDL_DAEMON_ENABLED: "true"
+      TDL_DAEMON_CHECK_INTERVAL: "300"
+      TDL_DAEMON_HEALTH_FILE: /app/health_status.txt
+      TDL_GLOBAL_FILTERS_EXTENSIONS: .mp4,.jpg,.jpeg,.png,.webp
+      TDL_FLAT_STRUCTURE: "false"
+      TDL_PROXY_ENABLED: "true"
+      TDL_PROXY_SCHEME: socks5
+      TDL_PROXY_HOST: 192.168.2.20
+      TDL_PROXY_PORT: "40000"
+    volumes:
+      - ./downloads:/downloads
+      - ./sessions:/app/.sessions
+      - ./config.yaml:/app/config.yaml
+    stdin_open: true
+    tty: true
+
+  telegram-downloader-web:
+    image: telegram-downloader:fork
+    restart: unless-stopped
+    depends_on:
+      - telegram-downloader
+    environment:
+      TZ: Asia/Shanghai
+      PUID: 1000
+      PGID: 1000
+      TDL_CONFIG_FILE: /app/config.yaml
+      TDL_WEB_TOKEN: change-this-token
+      TDL_DAEMON_HEALTH_FILE: /app/health_status.txt
+    command: uvicorn src.web.app:app --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./downloads:/downloads
+      - ./sessions:/app/.sessions
+      - ./config.yaml:/app/config.yaml

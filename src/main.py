@@ -14,6 +14,7 @@ foundation architecture.
 
 import asyncio
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -25,6 +26,7 @@ from pyrogram.types import Message
 from src.config import load_config, ConfigError
 from src.config.schema import SourceConfig
 from src.config.source_parser import parse_sources, validate_source_access
+from src.media import get_media_filename, get_message_media
 from src.organization import build_destination_path, is_duplicate, resolve_conflict
 from src.sources.base import BaseSource
 from src.state import CursorStore, DownloadHistory, PendingDownloads
@@ -121,15 +123,13 @@ async def download_batch(
 
         async with semaphore:  # Acquire semaphore slot
             # Extract media and filename
-            media = (
-                msg.document or
-                msg.audio or
-                msg.video or
-                msg.animation or
-                msg.voice or
-                msg.video_note
-            )
-            fname = getattr(media, "file_name", None) or f"message_{msg.id}"
+            media = get_message_media(msg)
+            if not media:
+                log.warning(f"Skip message without supported media: {msg.id}")
+                cursor_store.set(cursor_key, msg.id)
+                return
+
+            fname = get_media_filename(msg, media)
             media_size = getattr(media, "file_size", 0)
 
             # Check download history for persistent deduplication
@@ -378,7 +378,7 @@ async def run_check(cfg, log, state_store, client, sources_with_filters, history
 
 async def main():
     """Main entry point - daemon or run-once based on config."""
-    cfg = load_config("/app/config.yaml")
+    cfg = load_config(os.getenv("TDL_CONFIG_FILE", "/app/config.yaml"))
     log = setup_logging(cfg.log_file, cfg.verbosity)
 
     # Override log level from daemon config if specified

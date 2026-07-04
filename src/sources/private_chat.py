@@ -11,6 +11,7 @@ from typing import AsyncIterator
 from pyrogram import Client
 from pyrogram.types import Message
 
+from src.media import get_message_media
 from src.sources.base import BaseSource
 
 
@@ -68,17 +69,7 @@ class PrivateChatSource(BaseSource):
             if msg.id <= last_seen_id:
                 break
 
-            # Check for media attachments
-            media_obj = (
-                msg.document or
-                msg.audio or
-                msg.video or
-                msg.animation or
-                msg.voice or
-                msg.video_note
-            )
-
-            if media_obj:
+            if get_message_media(msg):
                 yield msg
 
     def get_cursor_key(self) -> str:

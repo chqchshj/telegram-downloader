@@ -5,10 +5,17 @@ Filters messages based on filename patterns, supporting both simple
 wildcards (user-friendly) and regex patterns (power users).
 """
 
+from __future__ import annotations
+
 import re
 import fnmatch
-from pyrogram.types import Message
+from typing import TYPE_CHECKING
+
 from src.filters.base import BaseFilter
+from src.media import get_media_filename, get_message_media
+
+if TYPE_CHECKING:
+    from pyrogram.types import Message
 
 
 class PatternFilter(BaseFilter):
@@ -96,24 +103,13 @@ class PatternFilter(BaseFilter):
         Returns:
             True if filename passes include/exclude filters
         """
-        # Get media object (same types as ExtensionFilter)
-        media_obj = (
-            message.document or
-            message.audio or
-            message.video or
-            message.animation or
-            message.voice or
-            message.video_note
-        )
+        media_obj = get_message_media(message)
 
         if not media_obj:
             return False
 
         # Extract filename
-        filename = getattr(media_obj, "file_name", None)
-        if not filename:
-            # No filename to filter - pass through
-            return True
+        filename = get_media_filename(message, media_obj)
 
         # Check exclude patterns first (early rejection)
         for pattern, is_regex in self.exclude_patterns:

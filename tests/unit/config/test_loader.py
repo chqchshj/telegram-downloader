@@ -146,6 +146,33 @@ class TestLoadFromEnv:
         # handles this via Pydantic validation.
         assert result["global_filters"]["allow_archives"] in (True, "true")
 
+    def test_requested_fork_env_fields(self, clean_env, monkeypatch):
+        """Fork-specific env vars should map to schema fields."""
+        monkeypatch.setenv("TDL_API_ID", "12345")
+        monkeypatch.setenv("TDL_API_HASH", "abc123")
+        monkeypatch.setenv("TDL_FLAT_STRUCTURE", "true")
+        monkeypatch.setenv("TDL_GLOBAL_FILTERS_ONLY_AFTER", "2026-06-18T00:00:00+08:00")
+        monkeypatch.setenv("TDL_GLOBAL_FILTERS_EXTENSIONS", ".mp4,.jpg,.jpeg,.png,.webp")
+        monkeypatch.setenv("TDL_SOURCES_0_URL", "https://t.me/channel")
+        monkeypatch.setenv("TDL_SOURCES_0_NAME", "美丽新世界")
+        monkeypatch.setenv("TDL_PROXY_ENABLED", "true")
+        monkeypatch.setenv("TDL_PROXY_SCHEME", "socks5")
+        monkeypatch.setenv("TDL_PROXY_HOST", "192.168.2.20")
+        monkeypatch.setenv("TDL_PROXY_PORT", "40000")
+
+        result = _load_from_env()
+
+        assert result["flat_structure"] is True
+        assert result["global_filters"]["only_after"] == "2026-06-18T00:00:00+08:00"
+        assert result["global_filters"]["extensions"] == [".mp4", ".jpg", ".jpeg", ".png", ".webp"]
+        assert result["sources"][0]["name"] == "美丽新世界"
+        assert result["proxy"] == {
+            "enabled": True,
+            "scheme": "socks5",
+            "host": "192.168.2.20",
+            "port": 40000,
+        }
+
 
 class TestLoadFromYaml:
     """Tests for _load_from_yaml function."""

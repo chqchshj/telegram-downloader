@@ -77,6 +77,10 @@ def create_client(config: Config) -> Client:
     if config.phone_number:
         client_kwargs["phone_number"] = config.phone_number
 
+    proxy = config.proxy.to_pyrogram_proxy()
+    if proxy:
+        client_kwargs["proxy"] = proxy
+
     # Create and return unauthenticated client
     # Caller must use `async with client:` to authenticate and start
     return Client(**client_kwargs)
