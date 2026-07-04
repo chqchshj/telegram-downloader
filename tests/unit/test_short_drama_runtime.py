@@ -253,6 +253,31 @@ def test_short_drama_nfo_xml_is_generated(temp_dir):
     assert episode_root.find("uniqueid").attrib == {"type": "telegram_message"}
 
 
+def test_repeated_same_catalog_with_new_message_id_does_not_rewind(temp_dir):
+    db_path = temp_dir / "state.db"
+    with ShortDramaState(str(db_path)) as short_drama_state:
+        plan_short_drama_assignments(
+            [MockMessage(id=50, text=CATALOG_A), _video_message(51, "first.mp4")],
+            "channel:-100123",
+            short_drama_state,
+        )
+        assignments = plan_short_drama_assignments(
+            [MockMessage(id=52, text=CATALOG_A), _video_message(53, "second.mp4")],
+            "channel:-100123",
+            short_drama_state,
+        )
+
+    assert assignments[53].filename == "美丽新世界_EP02_误入厕所成变态.mp4"
+
+
+def test_parse_caption_episodes_deduplicates_repeated_lines():
+    from src.media import parse_caption_episodes
+
+    episodes = parse_caption_episodes(f"{CATALOG_A}\n{CATALOG_A}")
+
+    assert len(episodes) == 2
+
+
 def test_short_drama_nfo_does_not_overwrite_existing_files(temp_dir):
     video_path = temp_dir / "限定心动" / "限定心动_EP01_完整版.mp4"
     video_path.parent.mkdir()

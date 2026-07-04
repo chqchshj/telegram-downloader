@@ -60,6 +60,7 @@ def parse_caption_episodes(caption: str) -> list[CaptionEpisode]:
     """Parse all short-drama episode lines from a Telegram caption."""
     episodes: list[CaptionEpisode] = []
 
+    seen_keys: set[tuple[str, str, str]] = set()
     for raw_line in caption.splitlines():
         line = re.sub(r"^[^\w]+", "", raw_line.strip())
         if not line:
@@ -67,6 +68,10 @@ def parse_caption_episodes(caption: str) -> list[CaptionEpisode]:
 
         episode = _parse_episode_line(line)
         if episode:
+            key = (episode.series, episode.episode, episode.title)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             episodes.append(episode)
 
     return episodes

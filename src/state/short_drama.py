@@ -116,7 +116,8 @@ class ShortDramaState:
                 series = excluded.series,
                 episodes_json = excluded.episodes_json,
                 next_index = CASE
-                    WHEN short_drama_catalog_state.catalog_message_id = excluded.catalog_message_id
+                    WHEN short_drama_catalog_state.series = excluded.series
+                     AND short_drama_catalog_state.episodes_json = excluded.episodes_json
                     THEN short_drama_catalog_state.next_index
                     ELSE 0
                 END,
