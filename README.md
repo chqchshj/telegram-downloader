@@ -136,6 +136,8 @@ python -m src.tools.short_drama_renamer \
 
 If you have the downloader state database, pass `--state-db /path/to/state.db` to order videos by Telegram `message_id`; otherwise files are ordered by modification time with filename as the fallback. Existing target files are never overwritten; conflicts receive `_2`, `_3`, and so on.
 
+At runtime, short-drama catalog posts are detected from multi-line captions/text such as `剧名 EP-1 标题`. The active catalog is persisted in `state.db` per source, and following video/document messages are named from the channel-posted series and episode data, for example `美丽新世界/美丽新世界_EP01_樱花道偶遇.mp4`. `source.name` is only the display/folder fallback when no runtime catalog has been inferred.
+
 ### Daemon Mode
 
 ```yaml
@@ -164,7 +166,7 @@ If you have the downloader state database, pass `--state-db /path/to/state.db` t
 # Store all files in download_dir without per-channel subfolders
 - TDL_FLAT_STRUCTURE=true
 
-# Preserve readable folder names, including Chinese source names
+# Optional fallback folder/display name when no runtime catalog is active
 - TDL_SOURCES_0_NAME=美丽新世界
 
 # Persistent download tracking (enabled by default)

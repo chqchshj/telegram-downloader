@@ -11,7 +11,7 @@ from pyrogram import Client, raw
 from pyrogram.types import Message
 from pyrogram.enums import MessagesFilter
 
-from src.media import get_message_media
+from src.media import get_message_media, is_catalog_message
 from src.sources.base import BaseSource
 
 
@@ -171,8 +171,8 @@ class ForumTopicSource(BaseSource):
                 if not topic_match:
                     continue
 
-                # Yield messages with media attachments
-                if get_message_media(m):
+                # Yield media messages and catalog text/image posts.
+                if get_message_media(m) or is_catalog_message(m):
                     yield m
 
             if len(buf) < batch_size:

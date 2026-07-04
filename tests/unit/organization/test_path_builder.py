@@ -42,6 +42,24 @@ class TestBuildDestinationPathDefault:
         assert result.name == "book.epub"
 
     @pytest.mark.asyncio
+    async def test_runtime_folder_override_takes_precedence(self, temp_dir):
+        """Runtime series folders should override source_config.name."""
+        source = MockSource(display_name="Telegram Name")
+        config = SourceConfig(url="https://t.me/test", name="AI短剧")
+
+        result = await build_destination_path(
+            temp_dir,
+            source,
+            "美丽新世界_EP01.mp4",
+            config,
+            flat_structure=False,
+            folder_override="美丽新世界",
+        )
+
+        assert result.parent.name == "美丽新世界"
+        assert result.name == "美丽新世界_EP01.mp4"
+
+    @pytest.mark.asyncio
     async def test_preserves_chinese_source_name(self, temp_dir):
         """Chinese source names should be kept for short-drama folders."""
         source = MockSource(display_name="Telegram Name")

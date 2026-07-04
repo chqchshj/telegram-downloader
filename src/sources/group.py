@@ -11,7 +11,7 @@ from typing import AsyncIterator
 from pyrogram import Client
 from pyrogram.types import Message
 
-from src.media import get_message_media
+from src.media import get_message_media, is_catalog_message
 from src.sources.base import BaseSource
 
 
@@ -70,7 +70,7 @@ class GroupSource(BaseSource):
             if msg.id <= last_seen_id:
                 break
 
-            if get_message_media(msg):
+            if get_message_media(msg) or is_catalog_message(msg):
                 yield msg
 
     def get_cursor_key(self) -> str:

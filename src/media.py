@@ -72,20 +72,37 @@ def parse_caption_episodes(caption: str) -> list[CaptionEpisode]:
     return episodes
 
 
+def parse_catalog_episodes(caption: str) -> list[CaptionEpisode]:
+    """Return catalog episodes from caption/text, including single-episode posts."""
+    return parse_caption_episodes(caption)
+
+
+def get_message_catalog_episodes(message: Message) -> list[CaptionEpisode]:
+    """Return parsed catalog episodes from a Telegram message caption/text."""
+    return parse_catalog_episodes(get_caption_text(message))
+
+
+def is_catalog_message(message: Message) -> bool:
+    """Return True when a message caption/text is a short-drama catalog."""
+    return bool(get_message_catalog_episodes(message))
+
+
 def _parse_episode_line(line: str) -> CaptionEpisode | None:
     """Parse one caption line into series, normalized EP marker, and title."""
-    match = re.search(
+    patterns = [
         r"^\s*(?P<series>.+?)\s+(?P<episode>EP\s*[-_ ]?\s*\d+)\s*(?P<title>.*)$",
-        line,
-        flags=re.IGNORECASE,
-    )
+        r"^\s*(?P<series>.+?)\s+(?P<episode>[第全]\s*\d+\s*集)\s*(?P<title>.*)$",
+    ]
+    match = None
+    for pattern in patterns:
+        match = re.search(pattern, line, flags=re.IGNORECASE)
+        if match:
+            break
+
     if not match:
         return None
 
-    episode = re.sub(r"\s+", "", match.group("episode").upper())
-    episode = episode.replace("_", "-")
-    if not episode.startswith("EP-"):
-        episode = episode.replace("EP", "EP-", 1)
+    episode = _normalize_episode_marker(match.group("episode"))
 
     return CaptionEpisode(
         series=match.group("series").strip(),
@@ -94,11 +111,23 @@ def _parse_episode_line(line: str) -> CaptionEpisode | None:
     )
 
 
+def _normalize_episode_marker(marker: str) -> str:
+    """Normalize supported episode markers to EP-N."""
+    number_match = re.search(r"\d+", marker)
+    number = int(number_match.group(0)) if number_match else 0
+    return f"EP-{number}"
+
+
+def episode_number(episode: CaptionEpisode) -> int | None:
+    """Return an integer episode number from a parsed episode marker."""
+    number_match = re.search(r"\d+", episode.episode)
+    return int(number_match.group(0)) if number_match else None
+
+
 def build_episode_filename(episode: CaptionEpisode, ext: str) -> str:
     """Build a standardized short-drama episode filename."""
     suffix = ext if not ext or ext.startswith(".") else f".{ext}"
-    number_match = re.search(r"\d+", episode.episode)
-    number = int(number_match.group(0)) if number_match else 0
+    number = episode_number(episode) or 0
     parts = [
         episode.series,
         f"EP{number:02d}",
@@ -154,6 +183,37 @@ def media_extension(message: Message, media: Any | None = None) -> str:
     return _extension_from_mime(getattr(media, "mime_type", None))
 
 
+def is_short_drama_episode_media(message: Message, media: Any | None = None) -> bool:
+    """Return True for video-like media that can consume a catalog episode."""
+    media = media or get_message_media(message)
+    if not media:
+        return False
+
+    if (
+        getattr(message, "video", None)
+        or getattr(message, "animation", None)
+        or getattr(message, "video_note", None)
+    ):
+        return True
+
+    document = getattr(message, "document", None)
+    if document:
+        mime_type = (getattr(document, "mime_type", None) or "").lower()
+        if mime_type.startswith("video/"):
+            return True
+
+        suffix = media_extension(message, document).lower()
+        return suffix in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+    return False
+
+
+def build_catalog_filename(series: str, message_id: int, ext: str) -> str:
+    """Build a standardized filename for a catalog image/media message."""
+    suffix = ext if not ext or ext.startswith(".") else f".{ext}"
+    return sanitize_filename(f"{series}_目录_{message_id}{suffix}")
+
+
 def build_fallback_filename(message: Message, media: Any | None = None) -> str:
     """Build a human-friendly fallback filename from caption/message metadata."""
     media = media or get_message_media(message)
@@ -163,7 +223,7 @@ def build_fallback_filename(message: Message, media: Any | None = None) -> str:
 
     if getattr(message, "photo", None):
         if episode:
-            return f"{episode.series}_目录_{message.id}{ext or '.jpg'}"
+            return build_catalog_filename(episode.series, message.id, ext or ".jpg")
         if caption:
             return f"{caption}{ext or '.jpg'}"
         return f"message_{message.id}{ext or '.jpg'}"

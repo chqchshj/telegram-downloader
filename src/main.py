@@ -26,10 +26,18 @@ from pyrogram.types import Message
 from src.config import load_config, ConfigError
 from src.config.schema import SourceConfig
 from src.config.source_parser import parse_sources, validate_source_access
-from src.media import get_media_filename, get_message_media
+from src.media import get_media_filename, get_message_media, is_catalog_message
+from src.nfo import write_short_drama_nfo
 from src.organization import build_destination_path, is_duplicate, resolve_conflict
+from src.short_drama import plan_short_drama_assignments
 from src.sources.base import BaseSource
-from src.state import CursorStore, DownloadHistory, PendingDownloads
+from src.state import (
+    CursorStore,
+    DownloadHistory,
+    PendingDownloads,
+    ShortDramaAssignment,
+    ShortDramaState,
+)
 from src.client import create_client, download_media_with_retry
 from src.notifications import NotificationManager, DiscordNotifier, GenericWebhook
 
@@ -93,6 +101,7 @@ async def download_batch(
     source: BaseSource,
     source_config: SourceConfig,
     history: "DownloadHistory | None" = None,
+    short_drama_state: "ShortDramaState | None" = None,
 ) -> tuple[int, set[int]]:
     """Download a batch of messages concurrently with semaphore limit.
 
@@ -108,6 +117,7 @@ async def download_batch(
         source: Source object for this batch
         source_config: Source configuration for folder naming
         history: Optional download history for persistent deduplication
+        short_drama_state: Optional runtime short-drama catalog state
 
     Returns:
         Tuple of (download_count, failed_message_ids).
@@ -116,6 +126,16 @@ async def download_batch(
     """
     downloaded = 0
     failed_ids: set[int] = set()
+    short_drama_assignments: dict[int, ShortDramaAssignment] = {}
+    if short_drama_state:
+        try:
+            short_drama_assignments = plan_short_drama_assignments(
+                messages,
+                cursor_key,
+                short_drama_state,
+            )
+        except Exception as e:
+            log.error(f"Short-drama naming state failed; using fallback names: {e}")
 
     async def download_one(msg: Message) -> None:
         """Download single message with semaphore."""
@@ -125,11 +145,16 @@ async def download_batch(
             # Extract media and filename
             media = get_message_media(msg)
             if not media:
-                log.warning(f"Skip message without supported media: {msg.id}")
+                if is_catalog_message(msg):
+                    log.info(f"Recorded short-drama catalog from text message: {msg.id}")
+                else:
+                    log.warning(f"Skip message without supported media: {msg.id}")
                 cursor_store.set(cursor_key, msg.id)
                 return
 
-            fname = get_media_filename(msg, media)
+            assignment = short_drama_assignments.get(msg.id)
+            fname = assignment.filename if assignment else get_media_filename(msg, media)
+            folder_override = assignment.folder_name if assignment else None
             media_size = getattr(media, "file_size", 0)
 
             # Check download history for persistent deduplication
@@ -147,6 +172,7 @@ async def download_batch(
                     fname,
                     source_config,
                     config.flat_structure,
+                    folder_override=folder_override,
                 )
             except ValueError as e:
                 log.error(f"Path validation failed for {fname}: {e}")
@@ -186,6 +212,11 @@ async def download_batch(
             if success:
                 downloaded += 1
                 cursor_store.set(cursor_key, msg.id)
+                if assignment and assignment.episode_number is not None:
+                    try:
+                        write_short_drama_nfo(dest, assignment, msg)
+                    except Exception as e:
+                        log.error(f"Failed to write NFO for {dest.name}: {e}")
                 if history and file_unique_id:
                     history.record(file_unique_id, fname, media_size, cursor_key, msg.id)
             else:
@@ -252,7 +283,16 @@ async def startup_validation(cfg, log, client):
     return sources_with_filters
 
 
-async def run_check(cfg, log, state_store, client, sources_with_filters, history=None, pending=None):
+async def run_check(
+    cfg,
+    log,
+    state_store,
+    client,
+    sources_with_filters,
+    history=None,
+    pending=None,
+    short_drama_state=None,
+):
     """
     Single check iteration - process all configured sources.
 
@@ -267,6 +307,7 @@ async def run_check(cfg, log, state_store, client, sources_with_filters, history
         sources_with_filters: Pre-parsed list of (source, filter_config) tuples
         history: Optional DownloadHistory for persistent deduplication
         pending: Optional PendingDownloads queue for resumable downloads
+        short_drama_state: Optional ShortDramaState for runtime series naming
     """
     # Create global concurrency control
     semaphore = asyncio.Semaphore(cfg.max_concurrent_downloads)
@@ -304,7 +345,7 @@ async def run_check(cfg, log, state_store, client, sources_with_filters, history
             scan_above = pending.get_max_message_id(cursor_key)
             new_ids = []
             async for msg in source.iterate_new_media(scan_above):
-                if await composite_filter.matches(msg):
+                if is_catalog_message(msg) or await composite_filter.matches(msg):
                     new_ids.append(msg.id)
             if new_ids:
                 pending.add_batch(cursor_key, new_ids)
@@ -313,7 +354,7 @@ async def run_check(cfg, log, state_store, client, sources_with_filters, history
             # Fresh scan: stream matching IDs into pending (no Message accumulation)
             scanned_ids = []
             async for msg in source.iterate_new_media(last_seen_id):
-                if await composite_filter.matches(msg):
+                if is_catalog_message(msg) or await composite_filter.matches(msg):
                     scanned_ids.append(msg.id)
 
             if not scanned_ids:
@@ -360,6 +401,7 @@ async def run_check(cfg, log, state_store, client, sources_with_filters, history
             downloaded, failed_ids = await download_batch(
                 candidates, semaphore, client, Path(cfg.download_dir),
                 state_store, cursor_key, cfg, log, source, source_config, history,
+                short_drama_state,
             )
 
             # Remove from pending: orphaned + processed (everything except failures)
@@ -401,6 +443,10 @@ async def main():
     # Initialize pending downloads queue
     pending = PendingDownloads(str(state_db_path))
     log.info("Pending downloads queue initialized")
+
+    # Initialize runtime short-drama catalog state
+    short_drama_state = ShortDramaState(str(state_db_path))
+    log.info("Short-drama runtime naming state initialized")
 
     # Log credentials for debugging (mask sensitive parts)
     log.debug("=" * 50)
@@ -472,7 +518,10 @@ async def main():
                 # Do NOT re-parse sources in run_check - reuse startup_validation result
                 async def check_wrapper():
                     """Wrapper for run_check that captures sources_with_filters."""
-                    await run_check(cfg, log, state_store, client, sources_with_filters, history, pending)
+                    await run_check(
+                        cfg, log, state_store, client, sources_with_filters,
+                        history, pending, short_drama_state,
+                    )
 
                 service = DaemonService(
                     check_function=check_wrapper,
@@ -485,12 +534,16 @@ async def main():
                 await service.run()
             else:
                 log.info("Running in single-shot mode")
-                await run_check(cfg, log, state_store, client, sources_with_filters, history, pending)
+                await run_check(
+                    cfg, log, state_store, client, sources_with_filters,
+                    history, pending, short_drama_state,
+                )
     finally:
         # Cleanup
         if history:
             history.close()
         pending.close()
+        short_drama_state.close()
         state_store.close()
         log.info("Execution complete")
 

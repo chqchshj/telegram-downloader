@@ -18,6 +18,7 @@ async def build_destination_path(
     filename: str,
     source_config: SourceConfig,
     flat_structure: bool = False,
+    folder_override: str | None = None,
 ) -> Path:
     """
     Build destination path with optional per-source folder structure.
@@ -27,9 +28,10 @@ async def build_destination_path(
     - flat_structure=True:  {base_dir}/{filename}
 
     Folder name priority (when flat_structure=False):
-    1. source_config.name (user-provided display name)
-    2. source.get_display_name() (Telegram chat/topic name)
-    3. Fallback to cursor key if sanitization results in empty string
+    1. folder_override (runtime inferred series/catalog name)
+    2. source_config.name (user-provided fallback display/folder name)
+    3. source.get_display_name() (Telegram chat/topic name)
+    4. Fallback to cursor key if sanitization results in empty string
 
     Security measures:
     - Sanitizes folder and filename using whitelist [a-zA-Z0-9._-]
@@ -42,6 +44,7 @@ async def build_destination_path(
         filename: Original filename from Telegram message
         source_config: Source configuration with optional name override
         flat_structure: If True, store files directly in base_dir without subfolders
+        folder_override: Optional runtime folder name, e.g. inferred drama series
 
     Returns:
         Validated absolute path ready for download
@@ -69,8 +72,10 @@ async def build_destination_path(
         >>> path
         Path('/downloads/book.epub')
     """
-    # Get folder name: use config name, fallback to display name
-    if source_config.name:
+    # Get folder name: use runtime override, config name, then display name.
+    if folder_override:
+        folder_name = folder_override
+    elif source_config.name:
         folder_name = source_config.name
     else:
         folder_name = await source.get_display_name()
