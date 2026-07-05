@@ -220,25 +220,26 @@ def build_catalog_filename(series: str, message_id: int, ext: str) -> str:
 
 
 def build_fallback_filename(message: Message, media: Any | None = None) -> str:
-    """Build a human-friendly fallback filename from caption/message metadata."""
+    """Build a stable date/message-id fallback filename.
+
+    Telegram photos and some media do not have a server-side file_name.  Do not
+    use long captions as filenames: channels often put full promo text in photo
+    captions, which can exceed filesystem filename limits and breaks downloads
+    once `.partial.temp` is appended.  A date + message-id name is predictable
+    and matches archival/date-based download workflows.
+    """
     media = media or get_message_media(message)
     ext = media_extension(message, media)
-    caption = get_caption_text(message)
-    episode = parse_caption_episode(caption)
+    if getattr(message, "photo", None) and not ext:
+        ext = ".jpg"
 
-    if getattr(message, "photo", None):
-        if episode:
-            return build_catalog_filename(episode.series, message.id, ext or ".jpg")
-        if caption:
-            return f"{caption}{ext or '.jpg'}"
-        return f"message_{message.id}{ext or '.jpg'}"
+    message_date = getattr(message, "date", None)
+    if message_date:
+        prefix = message_date.strftime("%Y%m%d")
+    else:
+        prefix = "message"
 
-    if caption:
-        if episode:
-            return build_episode_filename(episode, ext)
-        return f"{caption}{ext}"
-
-    return f"message_{message.id}{ext}"
+    return f"{prefix}_{message.id}{ext}"
 
 
 def get_media_filename(message: Message, media: Any | None = None) -> str:

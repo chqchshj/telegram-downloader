@@ -65,7 +65,7 @@ def test_build_episode_filename_sanitizes_dangerous_characters():
     assert filename == "美丽_新世界_EP02_误入_厕所_.mp4"
 
 
-def test_photo_uses_series_index_fallback_name():
+def test_photo_uses_stable_date_message_fallback_name():
     message = MockMessage(
         id=42,
         document=None,
@@ -73,4 +73,4 @@ def test_photo_uses_series_index_fallback_name():
         caption="美丽新世界 EP-1 樱花道偶遇",
     )
 
-    assert get_media_filename(message) == "美丽新世界_目录_42.jpg"
+    assert get_media_filename(message) == "20260705_42.jpg"
