@@ -204,7 +204,7 @@
       <section id="overview" class="view active">
         <div class="toolbar">
           <h2>总览</h2>
-          <button id="refresh总览Btn" class="secondary">刷新</button>
+          <button id="refreshOverviewBtn" class="secondary">刷新</button>
         </div>
         <div class="grid">
           <div class="card metric"><span>健康状态</span><strong id="healthMetric">-</strong><div id="healthPill" class="pill"><i class="dot"></i> 未知</div></div>
@@ -214,7 +214,7 @@
         </div>
         <div class="wide-grid">
           <div class="card">
-            <div class="section-head"><h2>最新文件</h2><span class="pill" id="file数量Pill">0 个文件</span></div>
+            <div class="section-head"><h2>最新文件</h2><span class="pill" id="fileCountPill">0 个文件</span></div>
             <table><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody id="latestFiles"></tbody></table>
           </div>
           <div class="card">
@@ -257,11 +257,11 @@
             <label class="check"><input id="daemonEnabled" type="checkbox"> 启用守护进程</label>
             <label class="check"><input id="flatStructure" type="checkbox"> 平铺目录</label>
             <label class="check"><input id="proxyEnabled" type="checkbox"> 启用代理</label>
-            <label>协议 <select id="proxy协议"><option value="socks5">socks5</option><option value="http">http</option></select></label>
-            <label>主机 <input id="proxy主机" type="text" placeholder="192.168.2.20"></label>
-            <label>端口 <input id="proxy端口" type="number" min="1" max="65535"></label>
-            <label>用户名 <input id="proxy用户名" type="text" autocomplete="off"></label>
-            <label>密码 <input id="proxy密码" type="password" autocomplete="off" placeholder="留空表示保留现有值"></label>
+            <label>协议 <select id="proxyScheme"><option value="socks5">socks5</option><option value="http">http</option></select></label>
+            <label>主机 <input id="proxyHost" type="text" placeholder="192.168.2.20"></label>
+            <label>端口 <input id="proxyPort" type="number" min="1" max="65535"></label>
+            <label>用户名 <input id="proxyUsername" type="text" autocomplete="off"></label>
+            <label>密码 <input id="proxyPassword" type="password" autocomplete="off" placeholder="留空表示保留现有值"></label>
           </div>
         </div>
         <pre id="result"></pre>
@@ -291,7 +291,7 @@
               <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
               <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
               <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
-              <label>原始来源文件夹 <input id="source文件夹" type="text" placeholder="optional"></label>
+              <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="optional"></label>
               <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="configured default"></label>
               <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
             </div>
@@ -300,17 +300,17 @@
         </div>
         <div class="wide-grid">
           <div class="card">
-            <div class="section-head"><h2>任务</h2><button id="refresh任务Btn" class="ghost">刷新</button></div>
+            <div class="section-head"><h2>任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
             <table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table>
           </div>
           <div class="card stack">
             <h2>硬链接计划查看器</h2>
-            <label>文件夹 <input id="plan文件夹" type="text" placeholder="/downloads_ocr"></label>
+            <label>文件夹 <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
             <button id="loadPlanBtn" class="secondary">加载计划</button>
             <pre id="planOutput"></pre>
           </div>
         </div>
-        <pre id="ocr状态"></pre>
+        <pre id="ocrStatus"></pre>
       </section>
 
       <section id="logs" class="view">
@@ -388,11 +388,11 @@
       $("daemonInterval").value = daemon.check_interval || 300;
       const proxy = current配置.proxy || {};
       $("proxyEnabled").checked = Boolean(proxy.enabled);
-      $("proxy协议").value = proxy.scheme || "socks5";
-      $("proxy主机").value = proxy.host || proxy.hostname || "";
-      $("proxy端口").value = proxy.port || "";
-      $("proxy用户名").value = proxy.username || "";
-      $("proxy密码").value = "";
+      $("proxyScheme").value = proxy.scheme || "socks5";
+      $("proxyHost").value = proxy.host || proxy.hostname || "";
+      $("proxyPort").value = proxy.port || "";
+      $("proxyUsername").value = proxy.username || "";
+      $("proxyPassword").value = "";
       $("sources").value = (current配置.sources || []).map((source) => {
         const id = source.url || source.chat_id || "";
         return source.name ? `${id}, ${source.name}` : String(id);
@@ -429,16 +429,16 @@
       payload.proxy = {
         ...(payload.proxy || {}),
         enabled: $("proxyEnabled").checked,
-        scheme: $("proxy协议").value,
-        host: $("proxy主机").value.trim() || null,
-        port: $("proxy端口").value ? Number($("proxy端口").value) : null,
-        username: $("proxy用户名").value.trim() || null,
+        scheme: $("proxyScheme").value,
+        host: $("proxyHost").value.trim() || null,
+        port: $("proxyPort").value ? Number($("proxyPort").value) : null,
+        username: $("proxyUsername").value.trim() || null,
       };
-      if ($("proxy密码").value.trim()) payload.proxy.password = $("proxy密码").value.trim();
+      if ($("proxyPassword").value.trim()) payload.proxy.password = $("proxyPassword").value.trim();
       return payload;
     }
 
-    async function load配置() {
+    async function loadConfig() {
       const data = await api("/api/config");
       fillForm(data.config || {});
       const warnings = [];
@@ -447,13 +447,13 @@
       $("warnings").innerHTML = warnings.map((w) => `<div class="notice">${w}</div>`).join("");
       show("result", {config_path: data.config_path});
     }
-    async function save配置() {
+    async function saveConfig() {
       const data = await api("/api/config", {method: "POST", body: JSON.stringify(buildPayload())});
       fillForm(data.config || {});
       show("result", data);
-      await load总览();
+      await loadOverview();
     }
-    async function load状态() {
+    async function loadStatus() {
       const data = await api("/api/status");
       show("status", data);
       $("pendingMetric").textContent = data.state?.pending_count ?? 0;
@@ -466,7 +466,7 @@
       const data = await api("/api/个文件/summary");
       $("sizeMetric").textContent = bytes(data.total_size);
       $("downloadPath").textContent = data.download_dir;
-      $("file数量Pill").textContent = `${Object.values(data.counts_by_extension || {}).reduce((a, b) => a + b, 0)} 个文件`;
+      $("fileCountPill").textContent = `${Object.values(data.counts_by_extension || {}).reduce((a, b) => a + b, 0)} 个文件`;
       $("latestFiles").innerHTML = "";
       (data.latest_个文件 || []).forEach((file) => {
         const tr = document.createElement("tr");
@@ -483,18 +483,18 @@
         $("extensionRows").append(tr);
       });
     }
-    async function loadOcr状态() {
+    async function loadOcrStatus() {
       const data = await api("/api/ocr/status");
       $("coverMetric").textContent = data.cover_candidates || 0;
       $("coverPath").textContent = data.cover_cache_dir || "-";
       if (!$("outputRoot").value) $("outputRoot").value = data.output_dir || "";
       if (!$("coverRoot").value) $("coverRoot").value = data.cover_cache_dir || "";
-      show("ocr状态", data);
+      show("ocrStatus", data);
     }
-    async function load总览() {
-      await Promise.all([load状态(), loadFileSummary(), loadOcr状态(), load任务()]);
+    async function loadOverview() {
+      await Promise.all([loadStatus(), loadFileSummary(), loadOcrStatus(), loadTasks()]);
     }
-    async function load任务() {
+    async function loadTasks() {
       const data = await api("/api/tasks");
       $("tasksRows").innerHTML = "";
       (data.tasks || []).forEach((task) => {
@@ -506,17 +506,17 @@
         $("tasksRows").append(tr);
       });
     }
-    function schedule任务() {
+    function scheduleTasks() {
       if (taskTimer) clearInterval(taskTimer);
-      taskTimer = setInterval(() => load任务().catch((e) => show("ocr状态", String(e))), 4000);
+      taskTimer = setInterval(() => loadTasks().catch((e) => show("ocrStatus", String(e))), 4000);
     }
 
-    $("reloadBtn").addEventListener("click", () => load配置().catch((e) => show("result", String(e))));
-    $("saveBtn").addEventListener("click", () => withButton($("saveBtn"), save配置).catch((e) => show("result", String(e))));
-    $("statusBtn").addEventListener("click", () => load状态().catch((e) => show("status", String(e))));
-    $("refresh总览Btn").addEventListener("click", () => load总览().catch((e) => show("status", String(e))));
-    $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcr状态(), load任务()]).catch((e) => show("ocr状态", String(e))));
-    $("refresh任务Btn").addEventListener("click", () => load任务().catch((e) => show("ocr状态", String(e))));
+    $("reloadBtn").addEventListener("click", () => loadConfig().catch((e) => show("result", String(e))));
+    $("saveBtn").addEventListener("click", () => withButton($("saveBtn"), saveConfig).catch((e) => show("result", String(e))));
+    $("statusBtn").addEventListener("click", () => loadStatus().catch((e) => show("status", String(e))));
+    $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("status", String(e))));
+    $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcrStatus(), loadTasks()]).catch((e) => show("ocrStatus", String(e))));
+    $("refreshTasksBtn").addEventListener("click", () => loadTasks().catch((e) => show("ocrStatus", String(e))));
     $("extractBtn").addEventListener("click", () => withButton($("extractBtn"), async () => {
       const payload = {
         source_index: $("extractSourceIndex").value ? Number($("extractSourceIndex").value) : null,
@@ -524,9 +524,9 @@
         output_dir: $("extractOutputDir").value.trim() || null,
       };
       const data = await api("/api/ocr/extract-covers", {method: "POST", body: JSON.stringify(payload)});
-      show("ocr状态", data);
-      await load任务();
-    }).catch((e) => show("ocr状态", String(e))));
+      show("ocrStatus", data);
+      await loadTasks();
+    }).catch((e) => show("ocrStatus", String(e))));
     $("applyBtn").addEventListener("click", () => withButton($("applyBtn"), async () => {
       let ocrMapJson = null;
       if ($("ocrMapJson").value.trim()) ocrMapJson = JSON.parse($("ocrMapJson").value);
@@ -535,21 +535,21 @@
         ocr_map_path: $("ocrMapPath").value.trim() || null,
         cover_root: $("coverRoot").value.trim() || null,
         output_root: $("outputRoot").value.trim(),
-        source_folder: $("source文件夹").value.trim() || null,
+        source_folder: $("sourceFolder").value.trim() || null,
         min_confidence: $("minConfidence").value ? Number($("minConfidence").value) : null,
         dry_run: $("dryRun").checked,
       };
       const data = await api("/api/ocr/apply-map", {method: "POST", body: JSON.stringify(payload)});
-      if (!$("plan文件夹").value) $("plan文件夹").value = payload.output_root;
-      show("ocr状态", data);
-      await load任务();
-    }).catch((e) => show("ocr状态", String(e))));
+      if (!$("planFolder").value) $("planFolder").value = payload.output_root;
+      show("ocrStatus", data);
+      await loadTasks();
+    }).catch((e) => show("ocrStatus", String(e))));
     $("loadPlanBtn").addEventListener("click", () => withButton($("loadPlanBtn"), async () => {
-      const data = await api(`/api/ocr/plan?path=${encodeURIComponent($("plan文件夹").value.trim())}`);
+      const data = await api(`/api/ocr/plan?path=${encodeURIComponent($("planFolder").value.trim())}`);
       show("planOutput", data);
     }).catch((e) => show("planOutput", String(e))));
 
-    load配置().then(load总览).then(schedule任务).catch((e) => show("result", String(e)));
+    loadConfig().then(loadOverview).then(scheduleTasks).catch((e) => show("result", String(e)));
   </script>
 </body>
 </html>
