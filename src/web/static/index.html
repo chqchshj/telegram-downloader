@@ -227,10 +227,24 @@
       font-size: 13px;
     }
     .error.active { display: block; }
+    .table-wrap {
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0b0c0d;
+    }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-    th { color: var(--muted); font-weight: 650; }
+    th, td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 650; position: sticky; top: 0; background: #101112; z-index: 1; }
     td { color: #e4e4e7; overflow-wrap: anywhere; }
+    tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+    td:nth-child(2), th:nth-child(2) { white-space: nowrap; width: 100px; }
+    td:nth-child(3), th:nth-child(3) { white-space: nowrap; width: 160px; color: var(--muted); }
+    .debug-panel summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 650; }
+    .debug-panel pre { margin-top: 12px; }
+    .ocr-workspace { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(430px, 1.22fr); gap: 14px; align-items: start; }
+    .ocr-secondary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .75fr); gap: 14px; align-items: start; }
     pre {
       margin: 0;
       min-height: 90px;
@@ -250,7 +264,7 @@
     .stack { display: grid; gap: 12px; }
     @media (max-width: 860px) {
       .bar, main { padding-left: 14px; padding-right: 14px; }
-      main, .wide-grid { grid-template-columns: 1fr; }
+      main, .wide-grid, .ocr-workspace, .ocr-secondary { grid-template-columns: 1fr; }
       nav { position: static; display: grid; grid-template-columns: repeat(2, 1fr); }
     }
   </style>
@@ -312,7 +326,7 @@
         <div class="wide-grid">
           <div class="card">
             <div class="section-head"><h2>最新文件</h2><span class="pill" id="fileCountPill">0 个文件</span></div>
-            <table><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody id="latestFiles"></tbody></table>
+            <div class="table-wrap"><table><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody id="latestFiles"></tbody></table></div>
           </div>
           <div class="card">
             <div class="section-head"><h2>扩展名统计</h2></div>
@@ -378,7 +392,7 @@
             <div class="flow-step"><div class="step-title"><span class="step-number">4</span>生成目录</div><p class="helper">确认无误后关闭仅预览，生成独立硬链接目录，原始下载不动。</p></div>
           </div>
         </div>
-        <div class="wide-grid">
+        <div class="ocr-workspace">
           <div class="card stack">
             <h2>① 提取封面</h2>
             <div class="grid">
@@ -405,10 +419,10 @@
             <button id="applyBtn">应用映射</button>
           </div>
         </div>
-        <div class="wide-grid">
+        <div class="ocr-secondary">
           <div class="card">
-            <div class="section-head"><h2>任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
-            <table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table>
+            <div class="section-head"><h2>后台任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
+            <div class="table-wrap"><table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table></div>
           </div>
           <div class="card stack">
             <h2>③ 查看整理计划</h2>
@@ -417,7 +431,10 @@
             <pre id="planOutput"></pre>
           </div>
         </div>
-        <pre id="ocrStatus"></pre>
+        <details class="card debug-panel">
+          <summary>调试信息 / 原始 OCR 状态</summary>
+          <pre id="ocrStatus"></pre>
+        </details>
       </section>
 
       <section id="logs" class="view">
@@ -472,6 +489,12 @@
       let size = value, idx = 0;
       while (size >= 1024 && idx < units.length - 1) { size /= 1024; idx += 1; }
       return `${size.toFixed(idx ? 1 : 0)} ${units[idx]}`;
+    }
+    function shortDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+      return date.toLocaleString("zh-CN", {month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"});
     }
     function cell(text) {
       const td = document.createElement("td");
@@ -549,7 +572,7 @@
         return source.name ? `${id}, ${source.name}` : String(id);
       }).join("\n");
     }
-    function parse来源() {
+    function parseSources() {
       return $("sources").value.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
         const [id, ...nameParts] = line.split(",");
         const value = id.trim();
@@ -569,7 +592,7 @@
       payload.phone_number = $("phoneNumber").value.trim() || null;
       payload.download_dir = $("downloadDir").value.trim() || "/downloads";
       payload.flat_structure = $("flatStructure").checked;
-      payload.sources = parse来源();
+      payload.sources = parseSources();
       payload.global_filters = {
         ...(payload.global_filters || {}),
         extensions: $("extensions").value.split(",").map((v) => v.trim()).filter(Boolean),
@@ -629,7 +652,7 @@
         const tr = document.createElement("tr");
         tr.append(cell(file.name));
         tr.append(cell(bytes(file.size)));
-        tr.append(cell(file.modified_at));
+        tr.append(cell(shortDate(file.modified_at)));
         $("latestFiles").append(tr);
       });
       $("extensionRows").innerHTML = "";
@@ -658,7 +681,7 @@
         const tr = document.createElement("tr");
         tr.append(cell(taskKindLabel(task.kind)));
         tr.append(cell(taskStatusLabel(task.status)));
-        tr.append(cell(task.created_at));
+        tr.append(cell(shortDate(task.created_at)));
         tr.append(cell(task.error || task.output || JSON.stringify(task.result || task.input || {})));
         $("tasksRows").append(tr);
       });
