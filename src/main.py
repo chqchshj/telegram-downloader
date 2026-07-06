@@ -248,7 +248,7 @@ async def download_batch(
                     except Exception as e:
                         log.error(f"Failed to write NFO for {dest.name}: {e}")
                 if history and file_unique_id:
-                    history.record(file_unique_id, fname, media_size, cursor_key, msg.id)
+                    history.record(file_unique_id, dest.name, media_size, cursor_key, msg.id)
             else:
                 log.error(f"Failed to download: {dest.name}")
                 failed_ids.add(msg.id)

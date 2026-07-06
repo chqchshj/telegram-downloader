@@ -4,6 +4,7 @@ from __future__ import annotations
 import mimetypes
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -242,9 +243,34 @@ def build_fallback_filename(message: Message, media: Any | None = None) -> str:
     return f"{prefix}_{message.id}{ext}"
 
 
-def get_media_filename(message: Message, media: Any | None = None) -> str:
-    """Return Telegram file_name or a caption/message based fallback."""
+def _archive_date_prefix(archive_date: date | datetime | None = None) -> str:
+    value = archive_date or date.today()
+    if isinstance(value, datetime):
+        value = value.date()
+    return value.strftime("%Y%m%d")
+
+
+def build_raw_telegram_filename(
+    message: Message,
+    telegram_file_name: str,
+    archive_date: date | datetime | None = None,
+) -> str:
+    """Build the raw archive filename for Telegram-provided file_name values."""
+    return sanitize_filename(
+        f"{_archive_date_prefix(archive_date)}_msg{message.id}_{telegram_file_name}"
+    )
+
+
+def get_media_filename(
+    message: Message,
+    media: Any | None = None,
+    archive_date: date | datetime | None = None,
+) -> str:
+    """Return the raw archive filename for downloadable media."""
     media = media or get_message_media(message)
     if not media:
         return f"message_{message.id}"
-    return getattr(media, "file_name", None) or build_fallback_filename(message, media)
+    telegram_file_name = getattr(media, "file_name", None)
+    if telegram_file_name:
+        return build_raw_telegram_filename(message, telegram_file_name, archive_date)
+    return build_fallback_filename(message, media)

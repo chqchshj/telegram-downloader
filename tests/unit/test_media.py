@@ -1,7 +1,7 @@
 """Tests for shared Telegram media helpers."""
 from datetime import datetime
 
-from tests.conftest import MockMessage, MockPhoto
+from tests.conftest import MockDocument, MockMessage, MockPhoto
 
 from src.media import (
     CaptionEpisode,
@@ -77,3 +77,30 @@ def test_photo_uses_stable_date_message_fallback_name():
     )
 
     assert get_media_filename(message) == "20260705_42.jpg"
+
+
+def test_telegram_file_name_gets_archive_date_message_prefix():
+    message = MockMessage(
+        id=1907,
+        document=MockDocument(
+            file_name="7月1日 (1)(29).mp4",
+            mime_type="video/mp4",
+        ),
+        date=datetime(2026, 7, 1, 12, 0, 0),
+    )
+
+    assert (
+        get_media_filename(message, archive_date=datetime(2026, 7, 7, 9, 30, 0))
+        == "20260707_msg1907_7月1日__1__29_.mp4"
+    )
+
+
+def test_fallback_without_telegram_file_name_is_not_archive_prefixed():
+    document = MockDocument(file_name="", mime_type="video/mp4")
+    message = MockMessage(
+        id=1907,
+        document=document,
+        date=datetime(2026, 7, 1, 12, 0, 0),
+    )
+
+    assert get_media_filename(message, archive_date=datetime(2026, 7, 7)) == "20260701_1907.mp4"

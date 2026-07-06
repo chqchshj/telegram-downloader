@@ -439,7 +439,7 @@
         </div>
         <div class="card stack">
           <h2>OCR 整理目录</h2>
-          <div class="quick-help">下载目录保存原始文件；整理输出目录保存硬链接、NFO 和封面，不会移动或删除原始文件。Docker 部署时请确保这两个容器路径都有宿主机 volume 挂载。</div>
+          <div class="quick-help">下载目录保存原始文件，文件名带归档日期和 Telegram 消息 ID；整理输出目录按短剧名和集数保存硬链接、NFO 和封面，不会移动或删除原始文件。Docker 部署时请确保这两个容器路径都有宿主机 volume 挂载。</div>
           <div class="grid">
             <label>整理输出目录 <input id="ocrOutputDir" type="text" placeholder="/downloads_ocr"></label>
             <label>封面缓存目录 <input id="ocrCoverCacheDir" type="text" placeholder="/app/.sessions/ocr_covers"></label>
