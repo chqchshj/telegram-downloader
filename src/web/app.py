@@ -127,6 +127,12 @@ def _json_item_count(path: Path) -> int:
     return 0
 
 
+def _output_file_count(path: Path) -> int:
+    if not path.exists() or not path.is_dir():
+        return 0
+    return sum(1 for item in path.rglob("*") if item.is_file() and item.name not in PLAN_FILES.values())
+
+
 def _reject_output_inside_download(config: dict[str, Any], output_root: str | Path) -> Path:
     output = _resolve_config_path(config, output_root, output_root)
     download = _download_dir(config)
@@ -533,6 +539,20 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
     auto_map = cover_dir / "ocr_map_auto.json"
     review_queue = cover_dir / "ocr_review_queue.json"
     verify_raw = cover_dir / "ocr_verify_raw.json"
+    accepted_count = _json_item_count(auto_map)
+    review_count = _json_item_count(review_queue)
+    raw_count = _json_item_count(verify_raw)
+
+    latest_auto_output = None
+    if latest_auto_output_dirs:
+        latest_path = Path(latest_auto_output_dirs[0])
+        latest_auto_output = {
+            "path": str(latest_path),
+            "file_count": _output_file_count(latest_path),
+            "plan_count": _json_item_count(latest_path / PLAN_FILES["plan"]),
+            "modified_at": datetime.fromtimestamp(latest_path.stat().st_mtime, timezone.utc).isoformat(),
+        }
+
     backfill_limit = _ocr_backfill_recent_limit(config)
     backfill_status: dict[str, Any] = {
         "recent_limit": backfill_limit,
@@ -559,6 +579,23 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         except Exception as exc:
             backfill_status["error"] = str(exc)
 
+    ocr_config = _ocr_config(config)
+    auto_enabled = bool(ocr_config.get("enabled"))
+    if not auto_enabled:
+        next_action = "未开启 OCR 自动整理"
+    elif review_count:
+        next_action = f"有 {review_count} 条待复核"
+    elif backfill_status.get("selected_count"):
+        next_action = f"有 {backfill_status['selected_count']} 条等待自动处理"
+    elif not ocr_config.get("llm_verify_enabled"):
+        next_action = "封面提取可用，自动识别未开启"
+    else:
+        next_action = "自动运行中，无需手动操作"
+
+    organized_count = 0
+    if latest_auto_output:
+        organized_count = int(latest_auto_output.get("plan_count") or latest_auto_output.get("file_count") or 0)
+
     return {
         "config": _safe_ocr_config(config),
         "cover_cache_dir": str(cover_dir),
@@ -574,10 +611,24 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "ocr_map_auto_exists": auto_map.exists(),
         "ocr_review_queue_exists": review_queue.exists(),
         "ocr_verify_raw_exists": verify_raw.exists(),
-        "ocr_map_auto_count": _json_item_count(auto_map),
-        "ocr_review_queue_count": _json_item_count(review_queue),
-        "ocr_verify_raw_count": _json_item_count(verify_raw),
+        "ocr_map_auto_count": accepted_count,
+        "ocr_review_queue_count": review_count,
+        "ocr_verify_raw_count": raw_count,
+        "auto_dashboard": {
+            "enabled": auto_enabled,
+            "llm_verify_enabled": bool(ocr_config.get("llm_verify_enabled")),
+            "llm_auto_apply": bool(ocr_config.get("llm_auto_apply")),
+            "state": "running" if auto_enabled else "disabled",
+            "cover_candidates": candidate_count,
+            "accepted_count": accepted_count,
+            "review_count": review_count,
+            "raw_count": raw_count,
+            "organized_count": organized_count,
+            "latest_output": latest_auto_output,
+            "next_action": next_action,
+        },
         "backfill": backfill_status,
+        "latest_auto_output": latest_auto_output,
         "latest_auto_output_dirs": latest_auto_output_dirs,
         "recent_hardlink_view_folders": recent_views,
     }

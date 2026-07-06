@@ -177,6 +177,11 @@ async def test_ocr_status_counts_manifests_and_candidates(temp_dir, monkeypatch)
     assert data["ocr_review_queue_count"] == 1
     assert data["ocr_verify_raw_count"] == 2
     assert str(auto_dir) in data["latest_auto_output_dirs"]
+    assert data["latest_auto_output"]["path"] == str(auto_dir)
+    assert data["auto_dashboard"]["enabled"] is True
+    assert data["auto_dashboard"]["accepted_count"] == 1
+    assert data["auto_dashboard"]["review_count"] == 1
+    assert data["auto_dashboard"]["next_action"] == "有 1 条待复核"
     assert data["config"]["llm_api_key"] == "[redacted]"
 
 

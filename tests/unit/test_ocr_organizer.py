@@ -162,6 +162,39 @@ def test_select_ocr_backfill_message_ids_skips_processed_outputs_and_missing(tem
     }
 
 
+def test_select_ocr_backfill_message_ids_skips_empty_manifest_as_no_cover(temp_dir):
+    download_root = temp_dir / "downloads"
+    download_root.mkdir()
+    (download_root / "no-cover.mp4").write_bytes(b"video")
+
+    cover_root = temp_dir / "covers"
+    manifest_dir = cover_root / "1784"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text(
+        json.dumps({"message_id": 1784, "candidates": []}),
+        encoding="utf-8",
+    )
+
+    rows = [
+        {
+            "file_unique_id": "a",
+            "file_name": "no-cover.mp4",
+            "file_size": 5,
+            "source_key": "channel:1",
+            "message_id": 1784,
+        }
+    ]
+
+    first = select_ocr_backfill_message_ids(rows, cover_root=cover_root, download_root=download_root)
+    second = select_ocr_backfill_message_ids(rows, cover_root=cover_root, download_root=download_root)
+
+    assert first.candidate_count == 1
+    assert first.selected_message_ids == []
+    assert first.skipped == {"manifest_no_candidates": 1}
+    assert second.selected_message_ids == []
+    assert second.skipped == {"manifest_no_candidates": 1}
+
+
 def test_create_hardlink_view_creates_separate_links_and_preserves_source(temp_dir):
     download_root = temp_dir / "downloads"
     output_root = temp_dir / "downloads_ocr"
@@ -323,6 +356,60 @@ def test_verify_cover_manifests_accepts_only_conservative_rows(temp_dir, monkeyp
     review = json.loads((cover_root / "ocr_review_queue.json").read_text(encoding="utf-8"))
     assert list(auto_map) == ["1"]
     assert {row["review_reason"] for row in review} == {"low_confidence", "not_drama"}
+
+
+def test_verify_cover_manifests_merges_incremental_results_by_message_id(temp_dir, monkeypatch):
+    cover_root = temp_dir / "covers"
+    cover_root.mkdir()
+    (cover_root / "ocr_map_auto.json").write_text(
+        json.dumps({"1": {"title": "Existing", "episode": "1", "confidence": 0.96}}),
+        encoding="utf-8",
+    )
+    (cover_root / "ocr_review_queue.json").write_text(
+        json.dumps([{"message_id": 2, "title": "Needs review", "review_reason": "low_confidence"}]),
+        encoding="utf-8",
+    )
+    (cover_root / "ocr_verify_raw.json").write_text(
+        json.dumps([{"message_id": 1, "status": "model_ok"}, {"message_id": 2, "status": "model_ok"}]),
+        encoding="utf-8",
+    )
+
+    item_dir = cover_root / "3"
+    item_dir.mkdir()
+    cover = item_dir / "group_photo_1.jpg"
+    cover.write_bytes(b"image")
+    (item_dir / "manifest.json").write_text(
+        json.dumps({"message_id": 3, "candidates": [{"path": str(cover), "preferred": True}]}),
+        encoding="utf-8",
+    )
+
+    def fake_call(cover_path, *, message_id, base_url, api_key, model, timeout=60):
+        return {
+            "message_id": message_id,
+            "title": "New Review",
+            "episode": "3",
+            "is_drama": True,
+            "confidence": 0.5,
+            "reason": "",
+            "cover_path": str(cover_path),
+            "status": "model_ok",
+        }
+
+    monkeypatch.setattr("src.ocr_organizer.call_llm_vision_endpoint", fake_call)
+
+    result = verify_cover_manifests(cover_root, cover_root, min_confidence=0.92, message_ids=[3])
+
+    assert result["accepted"] == 0
+    assert result["review"] == 1
+    assert result["accepted_total"] == 1
+    assert result["review_total"] == 2
+    assert result["raw_total"] == 3
+    auto_map = json.loads((cover_root / "ocr_map_auto.json").read_text(encoding="utf-8"))
+    review = json.loads((cover_root / "ocr_review_queue.json").read_text(encoding="utf-8"))
+    raw = json.loads((cover_root / "ocr_verify_raw.json").read_text(encoding="utf-8"))
+    assert list(auto_map) == ["1"]
+    assert {row["message_id"] for row in review} == {2, 3}
+    assert {row["message_id"] for row in raw} == {1, 2, 3}
 
 
 def test_verify_cover_manifests_can_allow_non_drama_and_missing_episode(temp_dir, monkeypatch):

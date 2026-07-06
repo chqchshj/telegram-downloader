@@ -296,16 +296,97 @@ def _load_json(path: str | Path | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def _manifest_has_candidates(cover_root: str | Path, message_id: int) -> bool:
+def _load_json_value(path: str | Path) -> Any:
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _coerce_message_id(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _message_id_sort_key(message_id: str) -> tuple[int, int | str]:
+    try:
+        return (0, int(message_id))
+    except ValueError:
+        return (1, message_id)
+
+
+def _load_ocr_map(path: str | Path) -> dict[str, dict[str, Any]]:
+    try:
+        data = _load_json_value(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    rows: dict[str, dict[str, Any]] = {}
+    for key, value in data.items():
+        message_id = _coerce_message_id(key)
+        if message_id is not None and isinstance(value, dict):
+            rows[str(message_id)] = value
+    return rows
+
+
+def _load_message_rows(path: str | Path) -> dict[str, dict[str, Any]]:
+    try:
+        data = _load_json_value(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(data, dict):
+        items = data.values()
+    elif isinstance(data, list):
+        items = data
+    else:
+        return {}
+
+    rows: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        message_id = _coerce_message_id(item.get("message_id"))
+        if message_id is not None:
+            rows[str(message_id)] = item
+    return rows
+
+
+def _ordered_message_rows(rows: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [rows[key] for key in sorted(rows, key=_message_id_sort_key)]
+
+
+def _load_verified_message_ids(cover_root: str | Path) -> dict[str, set[int]]:
+    root = Path(cover_root)
+    accepted = {_coerce_message_id(key) for key in _load_ocr_map(root / OCR_MAP_AUTO_FILE)}
+    review = {_coerce_message_id(key) for key in _load_message_rows(root / OCR_REVIEW_QUEUE_FILE)}
+    raw = {_coerce_message_id(key) for key in _load_message_rows(root / OCR_VERIFY_RAW_FILE)}
+    return {
+        "verified_accepted": {message_id for message_id in accepted if message_id is not None},
+        "verified_review": {message_id for message_id in review if message_id is not None},
+        "verified_raw": {message_id for message_id in raw if message_id is not None},
+    }
+
+
+def _verified_skip_reason(verified: dict[str, set[int]], message_id: int) -> str | None:
+    for reason in ("verified_accepted", "verified_review", "verified_raw"):
+        if message_id in verified.get(reason, set()):
+            return reason
+    return None
+
+
+def _manifest_candidate_state(cover_root: str | Path, message_id: int) -> str:
     manifest_path = Path(cover_root) / str(message_id) / "manifest.json"
     if not manifest_path.exists():
-        return False
+        return "missing"
     try:
-        data = _load_json(manifest_path)
+        data = _load_json_value(manifest_path)
     except (OSError, json.JSONDecodeError):
-        return False
-    candidates = data.get("candidates", []) if isinstance(data, dict) else []
-    return bool(candidates)
+        return "corrupt"
+    if not isinstance(data, dict):
+        return "corrupt"
+    candidates = data.get("candidates", [])
+    return "candidates" if candidates else "no_candidates"
 
 
 def _output_plan_paths(output_root: str | Path | None) -> list[Path]:
@@ -360,6 +441,7 @@ def select_ocr_backfill_message_ids(
     seen: set[int] = set()
     excluded = {int(message_id) for message_id in (exclude_message_ids or [])}
     output_message_ids = _load_output_plan_message_ids(output_root)
+    verified_message_ids = _load_verified_message_ids(cover_root)
 
     for row in rows:
         if source_key and row.source_key != source_key:
@@ -375,11 +457,20 @@ def select_ocr_backfill_message_ids(
         if Path(row.file_name).suffix.lower() not in VIDEO_SUFFIXES:
             skipped["not_video"] += 1
             continue
-        if _manifest_has_candidates(cover_root, row.message_id):
-            skipped["manifest_candidates"] += 1
-            continue
+
+        manifest_state = _manifest_candidate_state(cover_root, row.message_id)
         if row.message_id in output_message_ids:
             skipped["existing_output_plan"] += 1
+            continue
+        verified_reason = _verified_skip_reason(verified_message_ids, row.message_id)
+        if verified_reason:
+            skipped[verified_reason] += 1
+            continue
+        if manifest_state == "candidates":
+            skipped["manifest_candidates"] += 1
+            continue
+        if manifest_state == "no_candidates":
+            skipped["manifest_no_candidates"] += 1
             continue
 
         source = resolve_downloaded_media_path(
@@ -625,13 +716,37 @@ def verify_cover_manifests(
     map_path = output / OCR_MAP_AUTO_FILE
     review_path = output / OCR_REVIEW_QUEUE_FILE
     raw_path = output / OCR_VERIFY_RAW_FILE
-    map_path.write_text(json.dumps(accepted, ensure_ascii=False, indent=2), encoding="utf-8")
-    review_path.write_text(json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8")
-    raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    merged_accepted = _load_ocr_map(map_path)
+    merged_review = _load_message_rows(review_path)
+    merged_raw = _load_message_rows(raw_path)
+
+    for result in raw:
+        message_id = _coerce_message_id(result.get("message_id"))
+        if message_id is not None:
+            merged_raw[str(message_id)] = result
+    for message_id, entry in accepted.items():
+        merged_accepted[message_id] = entry
+        merged_review.pop(message_id, None)
+    for row in review:
+        message_id = _coerce_message_id(row.get("message_id"))
+        if message_id is None:
+            continue
+        message_key = str(message_id)
+        merged_review[message_key] = row
+        merged_accepted.pop(message_key, None)
+
+    merged_accepted = dict(sorted(merged_accepted.items(), key=lambda item: _message_id_sort_key(item[0])))
+    map_path.write_text(json.dumps(merged_accepted, ensure_ascii=False, indent=2), encoding="utf-8")
+    review_path.write_text(json.dumps(_ordered_message_rows(merged_review), ensure_ascii=False, indent=2), encoding="utf-8")
+    raw_path.write_text(json.dumps(_ordered_message_rows(merged_raw), ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         "accepted": len(accepted),
         "review": len(review),
         "raw": len(raw),
+        "accepted_total": len(merged_accepted),
+        "review_total": len(merged_review),
+        "raw_total": len(merged_raw),
         "ocr_map_auto_path": str(map_path),
         "ocr_review_queue_path": str(review_path),
         "ocr_verify_raw_path": str(raw_path),

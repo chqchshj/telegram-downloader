@@ -243,8 +243,44 @@
     td:nth-child(3), th:nth-child(3) { white-space: nowrap; width: 160px; color: var(--muted); }
     .debug-panel summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 650; }
     .debug-panel pre { margin-top: 12px; }
-    .ocr-workspace { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(430px, 1.22fr); gap: 14px; align-items: start; }
-    .ocr-secondary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .75fr); gap: 14px; align-items: start; }
+    .ocr-dashboard { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr); gap: 14px; align-items: stretch; }
+    .ocr-dashboard .card:first-child { grid-row: span 2; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .mini-metric {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.025);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 88px;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+    .mini-metric span, .detail-row span { color: var(--muted); font-size: 12px; }
+    .mini-metric strong { font-size: 23px; font-weight: 650; }
+    .detail-list { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+    .detail-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .detail-row strong { font-size: 12px; font-weight: 600; color: #e4e4e7; overflow-wrap: anywhere; }
+    .skip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .skip-list .pill { border-radius: 6px; }
+    .next-action { font-size: 18px; font-weight: 650; line-height: 1.45; }
+    .advanced-panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .advanced-panel summary { cursor: pointer; color: #f4f4f5; font-size: 14px; font-weight: 650; }
+    .advanced-content { display: grid; gap: 14px; margin-top: 14px; }
+    .manual-tools { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(430px, 1.22fr); gap: 14px; align-items: start; }
+    .manual-secondary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .75fr); gap: 14px; align-items: start; }
+    .tool-block {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.018);
+      border-radius: 8px;
+      padding: 14px;
+      min-width: 0;
+    }
     pre {
       margin: 0;
       min-height: 90px;
@@ -273,7 +309,9 @@
     .stack { display: grid; gap: 12px; }
     @media (max-width: 860px) {
       .bar, main { padding-left: 14px; padding-right: 14px; }
-      main, .wide-grid, .ocr-workspace, .ocr-secondary { grid-template-columns: 1fr; }
+      main, .wide-grid, .ocr-dashboard, .manual-tools, .manual-secondary { grid-template-columns: 1fr; }
+      .ocr-dashboard .card:first-child { grid-row: auto; }
+      .detail-row { grid-template-columns: 1fr; gap: 4px; }
       nav { position: static; display: grid; grid-template-columns: repeat(2, 1fr); }
     }
   </style>
@@ -401,57 +439,84 @@
           <h2>OCR 整理</h2>
           <button id="refreshOcrBtn" class="secondary">刷新</button>
         </div>
-        <div class="card stack">
-          <h2>整理向导</h2>
-          <div class="flow">
-            <div class="flow-step"><div class="step-title"><span class="step-number">1</span>提取封面</div><p class="helper">按 Telegram 媒体组关联封面和视频，优先取同组海报，失败时取视频缩略图。</p></div>
-            <div class="flow-step"><div class="step-title"><span class="step-number">2</span>识别文字</div><p class="helper">用 Hermes/人工 OCR 得到剧名、EP 和置信度，粘贴到 OCR 映射 JSON。</p></div>
-            <div class="flow-step"><div class="step-title"><span class="step-number">3</span>预览整理</div><p class="helper">先保持“仅预览”开启，生成计划文件检查 skipped / missing。</p></div>
-            <div class="flow-step"><div class="step-title"><span class="step-number">4</span>生成目录</div><p class="helper">确认无误后关闭仅预览，生成独立硬链接目录，原始下载不动。</p></div>
-          </div>
-        </div>
-        <div class="ocr-workspace">
+        <div class="ocr-dashboard">
           <div class="card stack">
-            <h2>① 提取封面</h2>
-            <div class="grid">
-              <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
-              <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="自动"></label>
-              <label>输出目录 <input id="extractOutputDir" type="text" placeholder="使用配置的封面缓存目录"></label>
+            <div class="section-head">
+              <h2>自动整理</h2>
+              <span id="ocrAutoPill" class="pill"><i class="dot"></i> 未加载</span>
             </div>
-            <button id="extractBtn">提取封面</button>
-          </div>
-          <div class="card stack">
-            <h2>② 应用 OCR 映射</h2>
-            <div class="quick-help">默认先勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。</div>
-            <label>OCR 映射 JSON
-              <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
-            </label>
-            <div class="grid">
-              <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
-              <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
-              <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
-              <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="可选"></label>
-              <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="使用配置默认值"></label>
-              <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
+            <div class="metric-grid">
+              <div class="mini-metric"><span>封面候选</span><strong id="ocrCoverCount">0</strong></div>
+              <div class="mini-metric"><span>已识别</span><strong id="ocrAcceptedCount">0</strong></div>
+              <div class="mini-metric"><span>待复核</span><strong id="ocrReviewCount">0</strong></div>
+              <div class="mini-metric"><span>已整理</span><strong id="ocrOrganizedCount">0</strong></div>
             </div>
-            <button id="applyBtn">应用映射</button>
-          </div>
-        </div>
-        <div class="ocr-secondary">
-          <div class="card">
-            <div class="section-head"><h2>后台任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
-            <div class="table-wrap"><table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table></div>
+            <div class="detail-list">
+              <div class="detail-row"><span>最近输出目录</span><strong id="ocrLatestOutput">-</strong></div>
+              <div class="detail-row"><span>输出文件数</span><strong id="ocrLatestFileCount">-</strong></div>
+            </div>
           </div>
           <div class="card stack">
-            <h2>③ 查看整理计划</h2>
-            <label>文件夹 <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
-            <button id="loadPlanBtn" class="secondary">加载计划</button>
-            <pre id="planOutput"></pre>
+            <h2>Backfill 状态</h2>
+            <div class="detail-list">
+              <div class="detail-row"><span>最近扫描</span><strong id="ocrBackfillScanned">0 条</strong></div>
+              <div class="detail-row"><span>待处理</span><strong id="ocrBackfillDue">0 条</strong></div>
+              <div class="detail-row"><span>跳过原因</span><div id="ocrBackfillSkips" class="skip-list"></div></div>
+            </div>
+          </div>
+          <div class="card stack">
+            <h2>下一步</h2>
+            <div id="ocrNextAction" class="next-action">未加载</div>
+            <p id="ocrAutoHint" class="helper">刷新后显示当前自动整理状态。</p>
           </div>
         </div>
-        <details class="card debug-panel">
-          <summary>调试信息 / 原始 OCR 状态</summary>
-          <pre id="ocrStatus"></pre>
+        <details class="advanced-panel">
+          <summary>高级工具 / 手动整理</summary>
+          <div class="advanced-content">
+            <div class="manual-tools">
+              <section class="tool-block stack">
+                <h2>提取封面</h2>
+                <div class="grid">
+                  <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
+                  <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="自动"></label>
+                  <label>输出目录 <input id="extractOutputDir" type="text" placeholder="使用配置的封面缓存目录"></label>
+                </div>
+                <button id="extractBtn">提取封面</button>
+              </section>
+              <section class="tool-block stack">
+                <h2>应用 OCR 映射</h2>
+                <div class="quick-help">默认勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。</div>
+                <label>OCR 映射 JSON
+                  <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
+                </label>
+                <div class="grid">
+                  <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
+                  <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
+                  <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
+                  <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="可选"></label>
+                  <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="使用配置默认值"></label>
+                  <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
+                </div>
+                <button id="applyBtn">应用映射</button>
+              </section>
+            </div>
+            <div class="manual-secondary">
+              <section class="tool-block">
+                <div class="section-head"><h2>后台任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
+                <div class="table-wrap"><table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table></div>
+              </section>
+              <section class="tool-block stack">
+                <h2>查看整理计划</h2>
+                <label>文件夹 <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
+                <button id="loadPlanBtn" class="secondary">加载计划</button>
+                <pre id="planOutput"></pre>
+              </section>
+            </div>
+            <section class="tool-block debug-panel">
+              <h2>原始状态</h2>
+              <pre id="ocrStatus"></pre>
+            </section>
+          </div>
         </details>
       </section>
 
@@ -564,6 +629,39 @@
         "ocr.extract-covers": "提取封面",
         "ocr.apply-map": "应用映射",
       }[kind] || kind || "";
+    }
+    function skipReasonLabel(reason) {
+      return {
+        duplicate_message_id: "重复消息",
+        existing_output_plan: "已有整理记录",
+        fresh_batch: "本轮新下载",
+        manifest_candidates: "已有封面",
+        manifest_no_candidates: "无可用封面",
+        missing_file: "源文件缺失",
+        not_video: "非视频",
+        other_source: "其他来源",
+        verified_accepted: "已识别",
+        verified_review: "已在复核",
+        verified_raw: "已处理",
+      }[reason] || reason || "其他";
+    }
+    function renderSkipReasons(targetId, reasons) {
+      const target = $(targetId);
+      target.innerHTML = "";
+      const entries = Object.entries(reasons || {}).filter(([, count]) => Number(count) > 0);
+      if (!entries.length) {
+        const empty = document.createElement("span");
+        empty.className = "pill";
+        empty.textContent = "暂无";
+        target.append(empty);
+        return;
+      }
+      entries.forEach(([reason, count]) => {
+        const item = document.createElement("span");
+        item.className = "pill";
+        item.textContent = `${skipReasonLabel(reason)} ${count}`;
+        target.append(item);
+      });
     }
 
     document.querySelectorAll(".tab").forEach((tab) => {
@@ -760,10 +858,32 @@
     }
     async function loadOcrStatus() {
       const data = await api("/api/ocr/status");
+      const dashboard = data.auto_dashboard || {};
+      const latest = dashboard.latest_output || data.latest_auto_output || null;
+      const backfill = data.backfill || {};
+      const enabled = Boolean(dashboard.enabled);
+      const reviewCount = dashboard.review_count ?? data.ocr_review_queue_count ?? 0;
+      const dueCount = backfill.selected_count ?? 0;
+
       $("coverMetric").textContent = data.cover_candidates || 0;
       $("coverPath").textContent = data.cover_cache_dir || "-";
+      $("ocrAutoPill").innerHTML = `<i class="dot ${enabled ? "ok" : "warn"}"></i>${enabled ? "开启" : "关闭"}`;
+      $("ocrCoverCount").textContent = dashboard.cover_candidates ?? data.cover_candidates ?? 0;
+      $("ocrAcceptedCount").textContent = dashboard.accepted_count ?? data.ocr_map_auto_count ?? 0;
+      $("ocrReviewCount").textContent = reviewCount;
+      $("ocrOrganizedCount").textContent = dashboard.organized_count ?? 0;
+      $("ocrLatestOutput").textContent = latest?.path || "尚无自动输出";
+      $("ocrLatestFileCount").textContent = latest ? `${latest.file_count ?? 0} 个文件` : "-";
+      $("ocrBackfillScanned").textContent = `${backfill.candidate_count ?? 0} / ${backfill.recent_limit ?? 0} 条`;
+      $("ocrBackfillDue").textContent = `${dueCount} 条`;
+      $("ocrNextAction").textContent = dashboard.next_action || "状态未加载";
+      $("ocrAutoHint").textContent = !enabled
+        ? "在配置页开启后，下载器会按后台周期处理。"
+        : (reviewCount ? "展开高级工具可查看原始待复核数据。" : (dueCount ? "后台会继续处理待处理项目。" : "当前不需要手动操作。"));
+      renderSkipReasons("ocrBackfillSkips", backfill.skip_reasons || {});
       if (!$("outputRoot").value) $("outputRoot").value = data.output_dir || "";
       if (!$("coverRoot").value) $("coverRoot").value = data.cover_cache_dir || "";
+      if (!$("planFolder").value && latest?.path) $("planFolder").value = latest.path;
       show("ocrStatus", data);
     }
     async function loadOverview() {
