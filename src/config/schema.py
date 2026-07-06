@@ -54,6 +54,14 @@ class OcrOrganizerConfig(BaseModel):
     output_dir: Optional[Path] = None
     cover_cache_dir: Optional[Path] = None
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    llm_verify_enabled: bool = Field(default=False)
+    llm_auto_apply: bool = Field(default=False)
+    llm_base_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_model: str = Field(default="gpt-5.5")
+    llm_auto_apply_min_confidence: float = Field(default=0.92, ge=0.0, le=1.0)
+    llm_require_episode: bool = Field(default=True)
+    llm_reject_non_drama: bool = Field(default=True)
 
 
 class FilterConfig(BaseModel):

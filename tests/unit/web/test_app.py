@@ -97,9 +97,25 @@ async def test_ocr_status_counts_manifests_and_candidates(temp_dir, monkeypatch)
         json.dumps({"message_id": 1619, "candidates": [{"path": "a"}, {"path": "b"}]}),
         encoding="utf-8",
     )
+    (session_dir / "ocr_covers" / "ocr_map_auto.json").write_text(
+        json.dumps({"1619": {"title": "Title"}}),
+        encoding="utf-8",
+    )
+    (session_dir / "ocr_covers" / "ocr_review_queue.json").write_text(
+        json.dumps([{"message_id": 1620}]),
+        encoding="utf-8",
+    )
+    (session_dir / "ocr_covers" / "ocr_verify_raw.json").write_text(
+        json.dumps([{"message_id": 1619}, {"message_id": 1620}]),
+        encoding="utf-8",
+    )
+    auto_dir = download_dir.parent / "downloads_ocr" / "auto_20260706_120000"
+    auto_dir.mkdir(parents=True)
     _state_db(session_dir / "state.db")
     config_path = temp_dir / "config.yaml"
     _write_config(config_path, download_dir, session_dir)
+    with config_path.open("a", encoding="utf-8") as handle:
+        handle.write("\n  llm_api_key: secret-token\n")
     monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
 
     data = await ocr_status(_request())
@@ -107,6 +123,11 @@ async def test_ocr_status_counts_manifests_and_candidates(temp_dir, monkeypatch)
     assert data["cover_manifests"] == 1
     assert data["cover_candidates"] == 2
     assert data["paths"]["state_db_exists"] is True
+    assert data["ocr_map_auto_count"] == 1
+    assert data["ocr_review_queue_count"] == 1
+    assert data["ocr_verify_raw_count"] == 2
+    assert str(auto_dir) in data["latest_auto_output_dirs"]
+    assert data["config"]["llm_api_key"] == "[redacted]"
 
 
 @pytest.mark.asyncio

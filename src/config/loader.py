@@ -45,6 +45,9 @@ BOOL_FIELDS = {
     "flat_structure",
     "test_mode",
     "track_downloads",
+    "auto_apply",
+    "require_episode",
+    "reject_non_drama",
 }
 
 # Full field names that should be parsed as integers
@@ -108,6 +111,17 @@ NESTED_MAPPINGS = {
     "ocr_organizer_output_dir": ("ocr_organizer", "output_dir"),
     "ocr_organizer_cover_cache_dir": ("ocr_organizer", "cover_cache_dir"),
     "ocr_organizer_min_confidence": ("ocr_organizer", "min_confidence"),
+    "ocr_organizer_llm_verify_enabled": ("ocr_organizer", "llm_verify_enabled"),
+    "ocr_organizer_llm_auto_apply": ("ocr_organizer", "llm_auto_apply"),
+    "ocr_organizer_llm_base_url": ("ocr_organizer", "llm_base_url"),
+    "ocr_organizer_llm_api_key": ("ocr_organizer", "llm_api_key"),
+    "ocr_organizer_llm_model": ("ocr_organizer", "llm_model"),
+    "ocr_organizer_llm_auto_apply_min_confidence": (
+        "ocr_organizer",
+        "llm_auto_apply_min_confidence",
+    ),
+    "ocr_organizer_llm_require_episode": ("ocr_organizer", "llm_require_episode"),
+    "ocr_organizer_llm_reject_non_drama": ("ocr_organizer", "llm_reject_non_drama"),
     "global_filters_extensions": ("global_filters", "extensions"),
     "global_filters_allow_archives": ("global_filters", "allow_archives"),
     "global_filters_archive_exts": ("global_filters", "archive_exts"),
@@ -137,7 +151,7 @@ def _parse_value(key: str, value: str) -> Any:
         return [v.strip() for v in value.split(",") if v.strip()]
 
     # Check if it's a boolean field
-    if field_name in BOOL_FIELDS or key in BOOL_FIELDS:
+    if field_name in BOOL_FIELDS or key in BOOL_FIELDS or key.endswith(("_enabled", "_auto_apply", "_require_episode", "_reject_non_drama")):
         return value.lower() in ("true", "1", "yes", "on")
 
     # Check if it's an integer field (full match or suffix match)

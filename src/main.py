@@ -45,7 +45,7 @@ from src.state import (
 )
 from src.client import create_client, download_media_with_retry
 from src.notifications import NotificationManager, DiscordNotifier, GenericWebhook
-from src.ocr_organizer import extract_cover_candidates
+from src.ocr_organizer import auto_verify_and_apply, extract_cover_candidates
 
 
 def setup_logging(log_file: str, verbosity: str) -> logging.Logger:
@@ -256,6 +256,23 @@ async def extract_ocr_covers_after_batch(
     try:
         for message_id in sorted(message_ids):
             await extract_cover_candidates(client, source.chat_id, message_id, output_dir)
+        llm_result = None
+        if getattr(organizer_cfg, "llm_verify_enabled", False):
+            llm_result = auto_verify_and_apply(
+                cover_root=output_dir,
+                verify_output_dir=output_dir,
+                download_root=cfg.download_dir,
+                state_db=Path(cfg.session_dir) / "state.db",
+                output_dir=organizer_cfg.output_dir or (Path(cfg.download_dir).parent / "downloads_ocr"),
+                auto_apply=bool(getattr(organizer_cfg, "llm_auto_apply", False)),
+                base_url=getattr(organizer_cfg, "llm_base_url", None),
+                api_key=getattr(organizer_cfg, "llm_api_key", None),
+                model=getattr(organizer_cfg, "llm_model", "gpt-5.5"),
+                min_confidence=getattr(organizer_cfg, "llm_auto_apply_min_confidence", 0.92),
+                require_episode=getattr(organizer_cfg, "llm_require_episode", True),
+                reject_non_drama=getattr(organizer_cfg, "llm_reject_non_drama", True),
+                message_ids=sorted(message_ids),
+            )
         log.info(
             "OCR organizer cover candidates written to %s. "
             "Run: python -m src.ocr_organizer apply-map --download-root %s "
@@ -266,6 +283,18 @@ async def extract_ocr_covers_after_batch(
             output_dir,
             organizer_cfg.output_dir or "<separate-output-root>",
         )
+        if llm_result:
+            verify = llm_result["verify"]
+            apply = llm_result.get("apply") or {}
+            log.info(
+                "OCR LLM verify complete: accepted=%s review=%s raw=%s map=%s review_queue=%s auto_output=%s",
+                verify.get("accepted"),
+                verify.get("review"),
+                verify.get("raw"),
+                verify.get("ocr_map_auto_path"),
+                verify.get("ocr_review_queue_path"),
+                apply.get("output_root"),
+            )
     except Exception as e:
         log.error(f"OCR organizer cover extraction failed (non-fatal): {e}", exc_info=True)
 

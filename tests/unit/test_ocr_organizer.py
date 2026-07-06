@@ -1,13 +1,17 @@
 """Tests for the OCR-map hardlink organizer."""
+import json
 import os
 
 import pytest
 
 from src.ocr_organizer import (
+    _parse_llm_json_content,
     build_ocr_filename,
+    build_parser,
     create_hardlink_view,
     normalize_episode_suffix,
     resolve_downloaded_media_path,
+    verify_cover_manifests,
 )
 
 
@@ -163,3 +167,102 @@ def test_create_hardlink_view_rejects_output_inside_download_root(temp_dir):
 
     with pytest.raises(ValueError):
         create_hardlink_view([], {}, {}, download_root, download_root / "ocr")
+
+
+def test_parse_llm_json_content_handles_fenced_json():
+    parsed = _parse_llm_json_content(
+        '```json\n{"title":"Title","episode":"1","is_drama":true,"confidence":0.95}\n```'
+    )
+
+    assert parsed["title"] == "Title"
+    assert parsed["confidence"] == 0.95
+
+
+def test_verify_cover_manifests_accepts_only_conservative_rows(temp_dir, monkeypatch):
+    cover_root = temp_dir / "covers"
+    for message_id in (1, 2, 3):
+        item_dir = cover_root / str(message_id)
+        item_dir.mkdir(parents=True)
+        cover = item_dir / "group_photo_1.jpg"
+        cover.write_bytes(b"image")
+        (item_dir / "manifest.json").write_text(
+            json.dumps({
+                "message_id": message_id,
+                "candidates": [{"path": str(cover), "preferred": True}],
+            }),
+            encoding="utf-8",
+        )
+
+    def fake_call(cover_path, *, message_id, base_url, api_key, model, timeout=60):
+        rows = {
+            1: {"title": "Good", "episode": "1", "is_drama": True, "confidence": 0.96},
+            2: {"title": "Low", "episode": "2", "is_drama": True, "confidence": 0.6},
+            3: {"title": "Ad", "episode": "3", "is_drama": False, "confidence": 0.99},
+        }
+        return {
+            "message_id": message_id,
+            "reason": "",
+            "cover_path": str(cover_path),
+            "status": "model_ok",
+            **rows[message_id],
+        }
+
+    monkeypatch.setattr("src.ocr_organizer.call_llm_vision_endpoint", fake_call)
+
+    result = verify_cover_manifests(cover_root, cover_root, min_confidence=0.92)
+
+    assert result["accepted"] == 1
+    assert result["review"] == 2
+    auto_map = json.loads((cover_root / "ocr_map_auto.json").read_text(encoding="utf-8"))
+    review = json.loads((cover_root / "ocr_review_queue.json").read_text(encoding="utf-8"))
+    assert list(auto_map) == ["1"]
+    assert {row["review_reason"] for row in review} == {"low_confidence", "not_drama"}
+
+
+def test_verify_cover_manifests_can_allow_non_drama_and_missing_episode(temp_dir, monkeypatch):
+    cover_dir = temp_dir / "covers" / "9"
+    cover_dir.mkdir(parents=True)
+    cover = cover_dir / "cover.jpg"
+    cover.write_bytes(b"image")
+    (cover_dir / "manifest.json").write_text(
+        json.dumps({"message_id": 9, "candidates": [{"path": str(cover), "preferred": True}]}),
+        encoding="utf-8",
+    )
+
+    def fake_call(cover_path, *, message_id, base_url, api_key, model, timeout=60):
+        return {
+            "message_id": message_id,
+            "title": "Maybe",
+            "episode": None,
+            "is_drama": False,
+            "confidence": 0.94,
+            "reason": "",
+            "cover_path": str(cover_path),
+            "status": "model_ok",
+        }
+
+    monkeypatch.setattr("src.ocr_organizer.call_llm_vision_endpoint", fake_call)
+
+    result = verify_cover_manifests(
+        temp_dir / "covers",
+        temp_dir / "covers",
+        reject_non_drama=False,
+        require_episode=False,
+    )
+
+    assert result["accepted"] == 1
+
+
+def test_llm_verify_command_parser_defaults_are_conservative():
+    args = build_parser().parse_args([
+        "llm-verify",
+        "--cover-root",
+        "/covers",
+        "--output-dir",
+        "/covers",
+    ])
+
+    assert args.model == "gpt-5.5"
+    assert args.min_confidence == 0.92
+    assert args.require_episode is True
+    assert args.reject_non_drama is True

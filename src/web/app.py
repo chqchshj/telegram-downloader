@@ -83,6 +83,13 @@ def _ocr_config(config: dict[str, Any]) -> dict[str, Any]:
     return config.get("ocr_organizer", {}) if isinstance(config.get("ocr_organizer"), dict) else {}
 
 
+def _safe_ocr_config(config: dict[str, Any]) -> dict[str, Any]:
+    ocr = dict(_ocr_config(config))
+    if ocr.get("llm_api_key"):
+        ocr["llm_api_key"] = "[redacted]"
+    return ocr
+
+
 def _cover_cache_dir(config: dict[str, Any]) -> Path:
     ocr = _ocr_config(config)
     return _resolve_config_path(config, ocr.get("cover_cache_dir"), _session_dir(config) / "ocr_covers")
@@ -91,6 +98,18 @@ def _cover_cache_dir(config: dict[str, Any]) -> Path:
 def _ocr_output_dir(config: dict[str, Any]) -> Path:
     ocr = _ocr_config(config)
     return _resolve_config_path(config, ocr.get("output_dir"), _download_dir(config).parent / "downloads_ocr")
+
+
+def _json_item_count(path: Path) -> int:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if isinstance(data, dict):
+        return len(data)
+    if isinstance(data, list):
+        return len(data)
+    return 0
 
 
 def _reject_output_inside_download(config: dict[str, Any], output_root: str | Path) -> Path:
@@ -419,6 +438,7 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
             continue
 
     recent_views = []
+    latest_auto_output_dirs = []
     if output_dir.parent.exists():
         candidates = [
             folder
@@ -427,9 +447,21 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         ]
         candidates.sort(key=lambda folder: folder.stat().st_mtime, reverse=True)
         recent_views = [str(folder) for folder in candidates[:12]]
+    if output_dir.exists():
+        auto_candidates = [
+            folder
+            for folder in output_dir.iterdir()
+            if folder.is_dir() and folder.name.startswith("auto_")
+        ]
+        auto_candidates.sort(key=lambda folder: folder.stat().st_mtime, reverse=True)
+        latest_auto_output_dirs = [str(folder) for folder in auto_candidates[:12]]
+
+    auto_map = cover_dir / "ocr_map_auto.json"
+    review_queue = cover_dir / "ocr_review_queue.json"
+    verify_raw = cover_dir / "ocr_verify_raw.json"
 
     return {
-        "config": _ocr_config(config),
+        "config": _safe_ocr_config(config),
         "cover_cache_dir": str(cover_dir),
         "output_dir": str(output_dir),
         "state_db": str(state_db),
@@ -440,6 +472,13 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         },
         "cover_manifests": len(manifests),
         "cover_candidates": candidate_count,
+        "ocr_map_auto_exists": auto_map.exists(),
+        "ocr_review_queue_exists": review_queue.exists(),
+        "ocr_verify_raw_exists": verify_raw.exists(),
+        "ocr_map_auto_count": _json_item_count(auto_map),
+        "ocr_review_queue_count": _json_item_count(review_queue),
+        "ocr_verify_raw_count": _json_item_count(verify_raw),
+        "latest_auto_output_dirs": latest_auto_output_dirs,
         "recent_hardlink_view_folders": recent_views,
     }
 

@@ -18,6 +18,7 @@ from src.config.schema import (
     ProxyConfig,
     RetryConfig,
 )
+from src.config.loader import _load_from_env
 
 
 class TestConfig:
@@ -122,10 +123,37 @@ class TestConfig:
             "output_dir": str(temp_dir / "ocr"),
             "cover_cache_dir": str(temp_dir / "covers"),
             "min_confidence": 0.8,
+            "llm_verify_enabled": True,
+            "llm_auto_apply": True,
+            "llm_base_url": "http://llm.local/v1",
+            "llm_model": "gpt-5.5",
+            "llm_auto_apply_min_confidence": 0.93,
         }
         config = Config.model_validate(minimal_config_dict)
         assert config.ocr_organizer.enabled is True
         assert config.ocr_organizer.min_confidence == 0.8
+        assert config.ocr_organizer.llm_verify_enabled is True
+        assert config.ocr_organizer.llm_auto_apply is True
+        assert config.ocr_organizer.llm_auto_apply_min_confidence == 0.93
+
+    def test_ocr_organizer_llm_env_mapping(self, monkeypatch):
+        """Flat OCR LLM env vars should map into ocr_organizer."""
+        monkeypatch.setenv("TDL_API_ID", "12345")
+        monkeypatch.setenv("TDL_API_HASH", "hash")
+        monkeypatch.setenv("TDL_OCR_ORGANIZER_LLM_VERIFY_ENABLED", "true")
+        monkeypatch.setenv("TDL_OCR_ORGANIZER_LLM_AUTO_APPLY", "yes")
+        monkeypatch.setenv("TDL_OCR_ORGANIZER_LLM_REQUIRE_EPISODE", "false")
+        monkeypatch.setenv("TDL_OCR_ORGANIZER_LLM_REJECT_NON_DRAMA", "0")
+        monkeypatch.setenv("TDL_OCR_ORGANIZER_LLM_BASE_URL", "http://llm.local/v1")
+
+        data = _load_from_env()
+        config = Config.model_validate(data)
+
+        assert config.ocr_organizer.llm_verify_enabled is True
+        assert config.ocr_organizer.llm_auto_apply is True
+        assert config.ocr_organizer.llm_require_episode is False
+        assert config.ocr_organizer.llm_reject_non_drama is False
+        assert config.ocr_organizer.llm_base_url == "http://llm.local/v1"
 
     def test_max_concurrent_downloads_default(self, minimal_config_dict):
         """Default max_concurrent_downloads should be 1."""

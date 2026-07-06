@@ -7,14 +7,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import mimetypes
 import json
 import os
 import re
 import shutil
 import sqlite3
+from datetime import datetime
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+import requests
 
 from src.media import is_short_drama_episode_media
 from src.security.sanitizer import sanitize_filename, validate_path_safety
@@ -22,6 +28,10 @@ from src.security.sanitizer import sanitize_filename, validate_path_safety
 
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v"}
 COVER_SUFFIX = ".jpg"
+OCR_MAP_AUTO_FILE = "ocr_map_auto.json"
+OCR_REVIEW_QUEUE_FILE = "ocr_review_queue.json"
+OCR_VERIFY_RAW_FILE = "ocr_verify_raw.json"
+DEFAULT_LLM_BASE_URL = "http://192.168.2.3:8318/v1"
 
 
 @dataclass(frozen=True)
@@ -230,6 +240,290 @@ def _load_json(path: str | Path | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def select_preferred_cover_image(manifest: dict[str, Any]) -> Path | None:
+    """Select the preferred cover image from a cover manifest."""
+    candidates = manifest.get("candidates", []) if isinstance(manifest, dict) else []
+    for candidate in candidates:
+        if isinstance(candidate, dict) and candidate.get("preferred") and candidate.get("path"):
+            return Path(candidate["path"])
+    for candidate in candidates:
+        if isinstance(candidate, dict) and candidate.get("path"):
+            return Path(candidate["path"])
+    return None
+
+
+def _parse_llm_json_content(content: str) -> dict[str, Any]:
+    """Parse a JSON object from model text, including fenced code blocks."""
+    text = (content or "").strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL)
+    if fenced:
+        text = fenced.group(1).strip()
+    if not text.startswith("{"):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start:end + 1]
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("LLM response JSON must be an object")
+    return data
+
+
+def _resolve_llm_base_url(base_url: str | None) -> str:
+    return (base_url or os.getenv("OCR_LLM_BASE_URL") or DEFAULT_LLM_BASE_URL).rstrip("/")
+
+
+def _resolve_llm_api_key(api_key: str | None = None, api_key_env: str | None = None) -> str | None:
+    if api_key:
+        return api_key
+    env_names = [api_key_env] if api_key_env else []
+    env_names.extend(["TDL_OCR_ORGANIZER_LLM_API_KEY", "CPA_API_KEY"])
+    for env_name in env_names:
+        if env_name and os.getenv(env_name):
+            return os.getenv(env_name)
+    return None
+
+
+def _image_data_url(path: Path) -> str:
+    media_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def call_llm_vision_endpoint(
+    cover_path: str | Path,
+    *,
+    message_id: int,
+    base_url: str | None,
+    api_key: str | None,
+    model: str,
+    timeout: int = 60,
+    max_retries: int = 3,
+    retry_delay: float = 5.0,
+) -> dict[str, Any]:
+    """Call an OpenAI-compatible vision endpoint for one cover image."""
+    url = f"{_resolve_llm_base_url(base_url)}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    prompt = (
+        "You verify short-drama cover OCR. Return only JSON with keys: "
+        "title string, episode string or null, is_drama boolean, "
+        "confidence number 0..1, reason string. Be conservative."
+    )
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": _image_data_url(Path(cover_path))}},
+                ],
+            }
+        ],
+        "temperature": 0,
+    }
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response.raise_for_status()
+            body = response.json()
+            content = body["choices"][0]["message"]["content"]
+            data = _parse_llm_json_content(content)
+            return _normalize_llm_result(data, message_id=message_id, cover_path=cover_path, status="model_ok")
+        except requests.exceptions.RequestException as exc:
+            last_error = exc
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+            else:
+                raise
+    raise RuntimeError(f"LLM call failed after {max_retries} retries: {last_error}")
+
+
+def _normalize_llm_result(
+    data: dict[str, Any],
+    *,
+    message_id: int,
+    cover_path: str | Path | None,
+    status: str,
+) -> dict[str, Any]:
+    try:
+        confidence = float(data.get("confidence") or 0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return {
+        "message_id": int(data.get("message_id") or message_id),
+        "title": str(data.get("title") or "").strip(),
+        "episode": data.get("episode"),
+        "is_drama": bool(data.get("is_drama")),
+        "confidence": max(0.0, min(1.0, confidence)),
+        "reason": str(data.get("reason") or "").strip(),
+        "cover_path": str(cover_path) if cover_path else None,
+        "status": status,
+    }
+
+
+def _review_reason(
+    result: dict[str, Any],
+    *,
+    min_confidence: float,
+    require_episode: bool,
+    reject_non_drama: bool,
+) -> str | None:
+    if result.get("status") != "model_ok":
+        return result.get("status") or "model_error"
+    if reject_non_drama and not result.get("is_drama"):
+        return "not_drama"
+    if not str(result.get("title") or "").strip():
+        return "no_title"
+    if float(result.get("confidence") or 0) < min_confidence:
+        return "low_confidence"
+    if require_episode and not normalize_episode_suffix(result.get("episode")):
+        return "missing_episode"
+    return None
+
+
+def verify_cover_manifests(
+    cover_root: str | Path,
+    output_dir: str | Path,
+    *,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    api_key_env: str | None = None,
+    model: str = "gpt-5.5",
+    min_confidence: float = 0.92,
+    require_episode: bool = True,
+    reject_non_drama: bool = True,
+    message_ids: Iterable[int] | None = None,
+) -> dict[str, Any]:
+    """Verify cover manifests with the LLM and write accepted/review/raw files."""
+    root = Path(cover_root)
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    wanted = {int(mid) for mid in message_ids} if message_ids is not None else None
+    accepted: dict[str, dict[str, Any]] = {}
+    review: list[dict[str, Any]] = []
+    raw: list[dict[str, Any]] = []
+    resolved_api_key = _resolve_llm_api_key(api_key, api_key_env)
+
+    manifest_paths = sorted(root.glob("*/manifest.json")) if root.exists() else []
+    for manifest_path in manifest_paths:
+        try:
+            manifest = _load_json(manifest_path)
+            message_id = int(manifest.get("message_id"))
+            if wanted is not None and message_id not in wanted:
+                continue
+            cover_path = select_preferred_cover_image(manifest)
+            if cover_path is None or not cover_path.exists():
+                result = _normalize_llm_result(
+                    {"reason": "No cover image available"},
+                    message_id=message_id,
+                    cover_path=cover_path,
+                    status="missing_cover",
+                )
+            else:
+                result = call_llm_vision_endpoint(
+                    cover_path,
+                    message_id=message_id,
+                    base_url=base_url,
+                    api_key=resolved_api_key,
+                    model=model,
+                )
+        except Exception as exc:
+            fallback_id = int(manifest_path.parent.name) if manifest_path.parent.name.isdigit() else 0
+            result = _normalize_llm_result(
+                {"reason": str(exc)},
+                message_id=fallback_id,
+                cover_path=None,
+                status="error",
+            )
+
+        reason = _review_reason(
+            result,
+            min_confidence=min_confidence,
+            require_episode=require_episode,
+            reject_non_drama=reject_non_drama,
+        )
+        raw.append(result)
+        if reason is None:
+            accepted[str(result["message_id"])] = {
+                "title": result["title"],
+                "episode": result["episode"],
+                "confidence": result["confidence"],
+                "is_drama": result["is_drama"],
+                "reason": result["reason"],
+                "cover_path": result["cover_path"],
+            }
+        else:
+            review.append({**result, "review_reason": reason})
+
+    map_path = output / OCR_MAP_AUTO_FILE
+    review_path = output / OCR_REVIEW_QUEUE_FILE
+    raw_path = output / OCR_VERIFY_RAW_FILE
+    map_path.write_text(json.dumps(accepted, ensure_ascii=False, indent=2), encoding="utf-8")
+    review_path.write_text(json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8")
+    raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "accepted": len(accepted),
+        "review": len(review),
+        "raw": len(raw),
+        "ocr_map_auto_path": str(map_path),
+        "ocr_review_queue_path": str(review_path),
+        "ocr_verify_raw_path": str(raw_path),
+    }
+
+
+def auto_verify_and_apply(
+    *,
+    cover_root: str | Path,
+    verify_output_dir: str | Path,
+    download_root: str | Path,
+    state_db: str | Path,
+    output_dir: str | Path,
+    auto_apply: bool,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    api_key_env: str | None = None,
+    model: str = "gpt-5.5",
+    min_confidence: float = 0.92,
+    require_episode: bool = True,
+    reject_non_drama: bool = True,
+    message_ids: Iterable[int] | None = None,
+) -> dict[str, Any]:
+    """Verify covers and optionally create a timestamped hardlink view."""
+    verify = verify_cover_manifests(
+        cover_root,
+        verify_output_dir,
+        base_url=base_url,
+        api_key=api_key,
+        api_key_env=api_key_env,
+        model=model,
+        min_confidence=min_confidence,
+        require_episode=require_episode,
+        reject_non_drama=reject_non_drama,
+        message_ids=message_ids,
+    )
+    result: dict[str, Any] = {"verify": verify, "apply": None}
+    if not auto_apply or verify["accepted"] == 0:
+        return result
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_output = Path(output_dir) / f"auto_{timestamp}"
+    rows = _load_history_rows(state_db)
+    apply = create_hardlink_view(
+        rows,
+        verify["ocr_map_auto_path"],
+        cover_root,
+        download_root,
+        target_output,
+        min_confidence=min_confidence,
+    )
+    result["apply"] = {"output_root": str(target_output), **apply}
+    return result
+
+
 def _ocr_entry(ocr_map: dict[str, Any], message_id: int) -> dict[str, Any] | None:
     value = ocr_map.get(str(message_id), ocr_map.get(message_id))
     return value if isinstance(value, dict) else None
@@ -243,13 +537,7 @@ def _cover_for_message(cover_manifest: dict[str, Any], message_id: int) -> Path 
         candidates = direct.get("candidates", [])
     else:
         candidates = cover_manifest.get("candidates", []) if cover_manifest.get("message_id") == message_id else []
-    for candidate in candidates:
-        if candidate.get("preferred") and candidate.get("path"):
-            return Path(candidate["path"])
-    for candidate in candidates:
-        if candidate.get("path"):
-            return Path(candidate["path"])
-    return None
+    return select_preferred_cover_image({"candidates": candidates})
 
 
 def _unique_target(path: Path, used_targets: set[Path] | None = None) -> Path:
@@ -429,6 +717,27 @@ def run_apply_map(args: argparse.Namespace) -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def _parse_message_ids(value: str | None) -> list[int] | None:
+    if not value:
+        return None
+    return [int(item.strip()) for item in value.split(",") if item.strip()]
+
+
+def run_llm_verify(args: argparse.Namespace) -> None:
+    result = verify_cover_manifests(
+        args.cover_root,
+        args.output_dir,
+        base_url=args.base_url,
+        api_key_env=args.api_key_env,
+        model=args.model,
+        min_confidence=args.min_confidence,
+        require_episode=args.require_episode,
+        reject_non_drama=args.reject_non_drama,
+        message_ids=_parse_message_ids(args.message_ids),
+    )
+    print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="OCR-map organizer for Telegram downloads")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -452,6 +761,18 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--min-confidence", type=float, default=0.0)
     apply.add_argument("--dry-run", action="store_true")
     apply.set_defaults(func=run_apply_map)
+
+    verify = subcommands.add_parser("llm-verify")
+    verify.add_argument("--cover-root", required=True)
+    verify.add_argument("--output-dir", required=True)
+    verify.add_argument("--base-url")
+    verify.add_argument("--api-key-env", default="CPA_API_KEY")
+    verify.add_argument("--model", default="gpt-5.5")
+    verify.add_argument("--min-confidence", type=float, default=0.92)
+    verify.add_argument("--require-episode", action=argparse.BooleanOptionalAction, default=True)
+    verify.add_argument("--reject-non-drama", action=argparse.BooleanOptionalAction, default=True)
+    verify.add_argument("--message-ids")
+    verify.set_defaults(func=run_llm_verify)
 
     return parser
 
