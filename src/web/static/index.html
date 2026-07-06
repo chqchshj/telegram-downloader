@@ -160,6 +160,40 @@
       font-size: 13px;
       line-height: 1.6;
     }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+    }
+    .flow-step {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.025);
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .step-title { display: flex; align-items: center; gap: 8px; color: #f4f4f5; font-weight: 650; }
+    .step-number {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: var(--accent);
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .quick-help {
+      border: 1px solid rgba(94,106,210,.35);
+      background: rgba(94,106,210,.08);
+      border-radius: 8px;
+      padding: 12px;
+      color: #d8dcff;
+      font-size: 13px;
+      line-height: 1.65;
+    }
     .login-screen {
       position: fixed;
       inset: 0;
@@ -335,10 +369,18 @@
           <h2>OCR 整理</h2>
           <button id="refreshOcrBtn" class="secondary">刷新</button>
         </div>
-        <p class="helper">流程：提取封面 → 粘贴 OCR 结果 → dry-run 预览 → 确认后生成硬链接目录。</p>
-        <div class="grid">
+        <div class="card stack">
+          <h2>整理向导</h2>
+          <div class="flow">
+            <div class="flow-step"><div class="step-title"><span class="step-number">1</span>提取封面</div><p class="helper">按 Telegram 媒体组关联封面和视频，优先取同组海报，失败时取视频缩略图。</p></div>
+            <div class="flow-step"><div class="step-title"><span class="step-number">2</span>识别文字</div><p class="helper">用 Hermes/人工 OCR 得到剧名、EP 和置信度，粘贴到 OCR 映射 JSON。</p></div>
+            <div class="flow-step"><div class="step-title"><span class="step-number">3</span>预览整理</div><p class="helper">先保持“仅预览”开启，生成计划文件检查 skipped / missing。</p></div>
+            <div class="flow-step"><div class="step-title"><span class="step-number">4</span>生成目录</div><p class="helper">确认无误后关闭仅预览，生成独立硬链接目录，原始下载不动。</p></div>
+          </div>
+        </div>
+        <div class="wide-grid">
           <div class="card stack">
-            <h2>封面提取</h2>
+            <h2>① 提取封面</h2>
             <div class="grid">
               <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
               <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="自动"></label>
@@ -347,7 +389,8 @@
             <button id="extractBtn">提取封面</button>
           </div>
           <div class="card stack">
-            <h2>应用 OCR 映射</h2>
+            <h2>② 应用 OCR 映射</h2>
+            <div class="quick-help">默认先勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。</div>
             <label>OCR 映射 JSON
               <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
             </label>
@@ -368,7 +411,7 @@
             <table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table>
           </div>
           <div class="card stack">
-            <h2>硬链接计划查看器</h2>
+            <h2>③ 查看整理计划</h2>
             <label>文件夹 <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
             <button id="loadPlanBtn" class="secondary">加载计划</button>
             <pre id="planOutput"></pre>
