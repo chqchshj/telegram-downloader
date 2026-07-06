@@ -7,6 +7,7 @@ import pytest
 
 from src.ocr_organizer import (
     _parse_llm_json_content,
+    auto_verify_and_apply,
     build_ocr_filename,
     build_parser,
     create_hardlink_view,
@@ -306,6 +307,80 @@ def test_create_hardlink_view_rejects_output_inside_download_root(temp_dir):
 
     with pytest.raises(ValueError):
         create_hardlink_view([], {}, {}, download_root, download_root / "ocr")
+
+
+def test_auto_verify_and_apply_writes_directly_to_configured_output_dir(temp_dir, monkeypatch):
+    download_root = temp_dir / "downloads"
+    download_root.mkdir()
+    source = download_root / "episode.mp4"
+    source.write_bytes(b"video")
+
+    state_db = temp_dir / "sessions" / "state.db"
+    state_db.parent.mkdir()
+    conn = sqlite3.connect(state_db)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE download_history (
+                file_unique_id TEXT,
+                file_name TEXT,
+                file_size INTEGER,
+                source_key TEXT,
+                message_id INTEGER,
+                downloaded_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO download_history
+                (file_unique_id, file_name, file_size, source_key, message_id, downloaded_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("uid", "episode.mp4", 5, "channel:1", 42, None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    cover_root = temp_dir / "covers"
+    cover_root.mkdir()
+    auto_map = cover_root / "ocr_map_auto.json"
+    auto_map.write_text(
+        json.dumps({"42": {"title": "Direct Root", "episode": "1", "confidence": 0.99}}),
+        encoding="utf-8",
+    )
+
+    def fake_verify_cover_manifests(*args, **kwargs):
+        return {
+            "accepted": 1,
+            "review": 0,
+            "raw": 1,
+            "accepted_total": 1,
+            "review_total": 0,
+            "raw_total": 1,
+            "ocr_map_auto_path": str(auto_map),
+            "ocr_review_queue_path": str(cover_root / "ocr_review_queue.json"),
+            "ocr_verify_raw_path": str(cover_root / "ocr_verify_raw.json"),
+        }
+
+    monkeypatch.setattr("src.ocr_organizer.verify_cover_manifests", fake_verify_cover_manifests)
+
+    output_dir = temp_dir / "downloads_ocr"
+    result = auto_verify_and_apply(
+        cover_root=cover_root,
+        verify_output_dir=cover_root,
+        download_root=download_root,
+        state_db=state_db,
+        output_dir=output_dir,
+        auto_apply=True,
+        min_confidence=0.8,
+    )
+
+    assert result["apply"]["output_root"] == str(output_dir)
+    assert result["apply"]["plan_path"] == str(output_dir / "_hardlink_plan.json")
+    assert (output_dir / "Direct_Root" / "Direct_Root_EP01_42.mp4").exists()
+    assert not list(output_dir.glob("auto_*"))
 
 
 def test_parse_llm_json_content_handles_fenced_json():

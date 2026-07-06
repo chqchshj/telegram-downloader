@@ -294,10 +294,33 @@ def _review_items(cover_dir: Path, review_queue: Path, limit: int = MAX_OCR_REVI
     return items
 
 
-def _output_file_count(path: Path) -> int:
+def _output_file_count(path: Path, *, exclude_legacy_auto_children: bool = False) -> int:
     if not path.exists() or not path.is_dir():
         return 0
-    return sum(1 for item in path.rglob("*") if item.is_file() and item.name not in PLAN_FILES.values())
+    count = 0
+    for item in path.rglob("*"):
+        if not item.is_file() or item.name in PLAN_FILES.values():
+            continue
+        if exclude_legacy_auto_children:
+            try:
+                relative = item.relative_to(path)
+            except ValueError:
+                continue
+            if relative.parts and relative.parts[0].startswith("auto_"):
+                continue
+        count += 1
+    return count
+
+
+def _hardlink_output_summary(path: Path, *, exclude_legacy_auto_children: bool = False) -> dict[str, Any]:
+    plan_path = path / PLAN_FILES["plan"]
+    modified_path = plan_path if plan_path.exists() else path
+    return {
+        "path": str(path),
+        "file_count": _output_file_count(path, exclude_legacy_auto_children=exclude_legacy_auto_children),
+        "plan_count": _json_item_count(plan_path),
+        "modified_at": datetime.fromtimestamp(modified_path.stat().st_mtime, timezone.utc).isoformat(),
+    }
 
 
 def _reject_output_inside_download(config: dict[str, Any], output_root: str | Path) -> Path:
@@ -711,15 +734,17 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
     raw_count = _json_item_count(verify_raw)
     review_items = _review_items(cover_dir, review_queue)
 
-    latest_auto_output = None
+    direct_output = None
+    direct_plan = output_dir / PLAN_FILES["plan"]
+    if direct_plan.exists():
+        direct_output = _hardlink_output_summary(output_dir, exclude_legacy_auto_children=True)
+
+    latest_legacy_auto_output = None
     if latest_auto_output_dirs:
         latest_path = Path(latest_auto_output_dirs[0])
-        latest_auto_output = {
-            "path": str(latest_path),
-            "file_count": _output_file_count(latest_path),
-            "plan_count": _json_item_count(latest_path / PLAN_FILES["plan"]),
-            "modified_at": datetime.fromtimestamp(latest_path.stat().st_mtime, timezone.utc).isoformat(),
-        }
+        latest_legacy_auto_output = _hardlink_output_summary(latest_path)
+
+    latest_auto_output = direct_output or latest_legacy_auto_output
 
     backfill_limit = _ocr_backfill_recent_limit(config)
     backfill_status: dict[str, Any] = {

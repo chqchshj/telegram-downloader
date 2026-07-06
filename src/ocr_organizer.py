@@ -15,7 +15,6 @@ import re
 import shutil
 import sqlite3
 from collections import Counter
-from datetime import datetime
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -770,7 +769,7 @@ def auto_verify_and_apply(
     reject_non_drama: bool = True,
     message_ids: Iterable[int] | None = None,
 ) -> dict[str, Any]:
-    """Verify covers and optionally create a timestamped hardlink view."""
+    """Verify covers and optionally create a hardlink view in the configured output root."""
     verify = verify_cover_manifests(
         cover_root,
         verify_output_dir,
@@ -787,8 +786,7 @@ def auto_verify_and_apply(
     if not auto_apply or verify["accepted"] == 0:
         return result
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    target_output = Path(output_dir) / f"auto_{timestamp}"
+    target_output = Path(output_dir)
     rows = _load_history_rows(state_db)
     apply = create_hardlink_view(
         rows,

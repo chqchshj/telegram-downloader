@@ -187,6 +187,43 @@ async def test_ocr_status_counts_manifests_and_candidates(temp_dir, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_ocr_status_prefers_direct_output_root_over_legacy_auto_dirs(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    output_dir = download_dir.parent / "downloads_ocr"
+    output_dir.mkdir(parents=True)
+    direct_series = output_dir / "Direct"
+    direct_series.mkdir()
+    (direct_series / "Direct_EP01_10.mp4").write_bytes(b"direct")
+    (output_dir / "_hardlink_plan.json").write_text(
+        json.dumps([{"message_id": 10, "target": str(direct_series / "Direct_EP01_10.mp4")}]),
+        encoding="utf-8",
+    )
+
+    auto_dir = output_dir / "auto_20260706_120000"
+    auto_dir.mkdir()
+    (auto_dir / "legacy.mp4").write_bytes(b"legacy")
+    (auto_dir / "_hardlink_plan.json").write_text(
+        json.dumps([{"message_id": 9, "target": str(auto_dir / "legacy.mp4")}]),
+        encoding="utf-8",
+    )
+
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+
+    data = await ocr_status(_request())
+
+    assert data["latest_auto_output"]["path"] == str(output_dir)
+    assert data["latest_auto_output"]["plan_count"] == 1
+    assert data["latest_auto_output"]["file_count"] == 1
+    assert data["auto_dashboard"]["latest_output"]["path"] == str(output_dir)
+    assert data["auto_dashboard"]["organized_count"] == 1
+    assert str(auto_dir) in data["latest_auto_output_dirs"]
+    assert str(output_dir) in data["recent_hardlink_view_folders"]
+
+
+@pytest.mark.asyncio
 async def test_ocr_status_includes_capped_safe_review_items(temp_dir, monkeypatch):
     download_dir = temp_dir / "downloads"
     session_dir = temp_dir / "sessions"

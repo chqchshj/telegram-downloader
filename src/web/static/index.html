@@ -439,7 +439,7 @@
         </div>
         <div class="card stack">
           <h2>OCR 整理目录</h2>
-          <div class="quick-help">下载目录保存原始文件，文件名带归档日期和 Telegram 消息 ID；整理输出目录按短剧名和集数保存硬链接、NFO 和封面，不会移动或删除原始文件。Docker 部署时请确保这两个容器路径都有宿主机 volume 挂载。</div>
+          <div class="quick-help">下载目录保存原始文件，文件名带归档日期和 Telegram 消息 ID；整理输出目录会直接按剧名/集数平铺硬链接、NFO 和封面，不会移动或删除原始文件；旧的 auto_* 目录是历史输出。Docker 部署时请确保这两个容器路径都有宿主机 volume 挂载。</div>
           <div class="grid">
             <label>整理输出目录 <input id="ocrOutputDir" type="text" placeholder="/downloads_ocr"></label>
             <label>封面缓存目录 <input id="ocrCoverCacheDir" type="text" placeholder="/app/.sessions/ocr_covers"></label>
@@ -524,7 +524,7 @@
               </section>
               <section class="tool-block stack">
                 <h2>应用 OCR 映射</h2>
-                <div class="quick-help">默认勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。</div>
+                <div class="quick-help">默认勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。手动整理会使用这里填写的整理输出目录，自动整理会直接平铺到配置的整理输出目录。</div>
                 <label>OCR 映射 JSON
                   <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
                 </label>
