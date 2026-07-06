@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Telegram Downloader</title>
+  <title>Telegram 下载器</title>
   <style>
     :root {
       color-scheme: dark;
@@ -181,10 +181,10 @@
   <header>
     <div class="bar">
       <div>
-        <h1>Telegram Downloader</h1>
-        <p class="muted">Configuration, operations, and OCR organizer workflow</p>
+        <h1>Telegram 下载器</h1>
+        <p class="muted">配置、下载状态与 OCR 整理工作台</p>
       </div>
-      <label>Web token
+      <label>Web 访问令牌
         <input id="webToken" type="password" autocomplete="off" placeholder="TDL_WEB_TOKEN">
       </label>
     </div>
@@ -192,10 +192,10 @@
 
   <main>
     <nav>
-      <button class="tab active" data-view="overview">Overview</button>
-      <button class="tab" data-view="config">Config</button>
-      <button class="tab" data-view="ocr">OCR Organizer</button>
-      <button class="tab" data-view="logs">Logs</button>
+      <button class="tab active" data-view="overview">总览</button>
+      <button class="tab" data-view="config">配置</button>
+      <button class="tab" data-view="ocr">OCR 整理</button>
+      <button class="tab" data-view="logs">日志</button>
     </nav>
 
     <div class="stack">
@@ -203,65 +203,65 @@
 
       <section id="overview" class="view active">
         <div class="toolbar">
-          <h2>Overview</h2>
-          <button id="refreshOverviewBtn" class="secondary">Refresh</button>
+          <h2>总览</h2>
+          <button id="refresh总览Btn" class="secondary">刷新</button>
         </div>
         <div class="grid">
-          <div class="card metric"><span>Health</span><strong id="healthMetric">-</strong><div id="healthPill" class="pill"><i class="dot"></i> unknown</div></div>
-          <div class="card metric"><span>Pending downloads</span><strong id="pendingMetric">0</strong><div class="path" id="statePath">-</div></div>
-          <div class="card metric"><span>Total media size</span><strong id="sizeMetric">0 B</strong><div class="path" id="downloadPath">-</div></div>
-          <div class="card metric"><span>OCR cover candidates</span><strong id="coverMetric">0</strong><div class="path" id="coverPath">-</div></div>
+          <div class="card metric"><span>健康状态</span><strong id="healthMetric">-</strong><div id="healthPill" class="pill"><i class="dot"></i> 未知</div></div>
+          <div class="card metric"><span>待下载</span><strong id="pendingMetric">0</strong><div class="path" id="statePath">-</div></div>
+          <div class="card metric"><span>媒体总大小</span><strong id="sizeMetric">0 B</strong><div class="path" id="downloadPath">-</div></div>
+          <div class="card metric"><span>OCR 封面候选</span><strong id="coverMetric">0</strong><div class="path" id="coverPath">-</div></div>
         </div>
         <div class="wide-grid">
           <div class="card">
-            <div class="section-head"><h2>Latest Files</h2><span class="pill" id="fileCountPill">0 files</span></div>
-            <table><thead><tr><th>Name</th><th>Size</th><th>Modified</th></tr></thead><tbody id="latestFiles"></tbody></table>
+            <div class="section-head"><h2>最新文件</h2><span class="pill" id="file数量Pill">0 个文件</span></div>
+            <table><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody id="latestFiles"></tbody></table>
           </div>
           <div class="card">
-            <div class="section-head"><h2>Extensions</h2></div>
-            <table><thead><tr><th>Ext</th><th>Count</th></tr></thead><tbody id="extensionRows"></tbody></table>
+            <div class="section-head"><h2>扩展名统计</h2></div>
+            <table><thead><tr><th>扩展名</th><th>数量</th></tr></thead><tbody id="extensionRows"></tbody></table>
           </div>
         </div>
       </section>
 
       <section id="config" class="view">
         <div class="toolbar">
-          <h2>Config</h2>
+          <h2>配置</h2>
           <div class="row">
-            <button id="saveBtn">Save</button>
-            <button id="reloadBtn" class="secondary">Reload</button>
+            <button id="saveBtn">保存</button>
+            <button id="reloadBtn" class="secondary">重新加载</button>
           </div>
         </div>
         <div class="card stack">
           <h2>Telegram</h2>
           <div class="grid">
             <label>API ID <input id="apiId" type="number" min="1"></label>
-            <label>API Hash <input id="apiHash" type="password" autocomplete="off" placeholder="Leave blank to keep existing"></label>
-            <label>Phone <input id="phoneNumber" type="text" autocomplete="off" placeholder="+1234567890"></label>
-            <label>Download directory <input id="downloadDir" type="text" placeholder="/downloads"></label>
+            <label>API Hash <input id="apiHash" type="password" autocomplete="off" placeholder="留空表示保留现有值"></label>
+            <label>手机号 <input id="phoneNumber" type="text" autocomplete="off" placeholder="+1234567890"></label>
+            <label>下载目录 <input id="downloadDir" type="text" placeholder="/downloads"></label>
           </div>
         </div>
         <div class="card stack">
-          <h2>Sources</h2>
-          <label>One source per line: URL or chat_id, optional name after a comma
+          <h2>来源</h2>
+          <label>每行一个来源：URL 或 chat_id，逗号后可写显示名称
             <textarea id="sources" spellcheck="false" placeholder="https://t.me/example_channel, Example"></textarea>
           </label>
         </div>
         <div class="card stack">
-          <h2>Filters, Daemon, Proxy</h2>
+          <h2>过滤器、守护进程与代理</h2>
           <div class="grid">
-            <label>Extensions <input id="extensions" type="text" placeholder=".mp4,.jpg,.jpeg,.png,.webp"></label>
-            <label>Only after <input id="onlyAfter" type="text" placeholder="2026-06-18T00:00:00+08:00"></label>
-            <label>Only before <input id="onlyBefore" type="text" placeholder="2026-07-01T00:00:00+08:00"></label>
-            <label>Daemon interval seconds <input id="daemonInterval" type="number" min="60" max="86400"></label>
-            <label class="check"><input id="daemonEnabled" type="checkbox"> Daemon enabled</label>
-            <label class="check"><input id="flatStructure" type="checkbox"> Flat structure</label>
-            <label class="check"><input id="proxyEnabled" type="checkbox"> Proxy enabled</label>
-            <label>Scheme <select id="proxyScheme"><option value="socks5">socks5</option><option value="http">http</option></select></label>
-            <label>Host <input id="proxyHost" type="text" placeholder="192.168.2.20"></label>
-            <label>Port <input id="proxyPort" type="number" min="1" max="65535"></label>
-            <label>Username <input id="proxyUsername" type="text" autocomplete="off"></label>
-            <label>Password <input id="proxyPassword" type="password" autocomplete="off" placeholder="Leave blank to keep existing"></label>
+            <label>扩展名统计 <input id="extensions" type="text" placeholder=".mp4,.jpg,.jpeg,.png,.webp"></label>
+            <label>起始时间 <input id="onlyAfter" type="text" placeholder="2026-06-18T00:00:00+08:00"></label>
+            <label>截止时间 <input id="onlyBefore" type="text" placeholder="2026-07-01T00:00:00+08:00"></label>
+            <label>守护进程检查间隔（秒） <input id="daemonInterval" type="number" min="60" max="86400"></label>
+            <label class="check"><input id="daemonEnabled" type="checkbox"> 启用守护进程</label>
+            <label class="check"><input id="flatStructure" type="checkbox"> 平铺目录</label>
+            <label class="check"><input id="proxyEnabled" type="checkbox"> 启用代理</label>
+            <label>协议 <select id="proxy协议"><option value="socks5">socks5</option><option value="http">http</option></select></label>
+            <label>主机 <input id="proxy主机" type="text" placeholder="192.168.2.20"></label>
+            <label>端口 <input id="proxy端口" type="number" min="1" max="65535"></label>
+            <label>用户名 <input id="proxy用户名" type="text" autocomplete="off"></label>
+            <label>密码 <input id="proxy密码" type="password" autocomplete="off" placeholder="留空表示保留现有值"></label>
           </div>
         </div>
         <pre id="result"></pre>
@@ -269,54 +269,54 @@
 
       <section id="ocr" class="view">
         <div class="toolbar">
-          <h2>OCR Organizer</h2>
-          <button id="refreshOcrBtn" class="secondary">Refresh</button>
+          <h2>OCR 整理</h2>
+          <button id="refreshOcrBtn" class="secondary">刷新</button>
         </div>
         <div class="grid">
           <div class="card stack">
-            <h2>Cover Extraction</h2>
+            <h2>封面提取</h2>
             <div class="grid">
-              <label>Source index <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
-              <label>Min message ID <input id="extractMinMessageId" type="number" min="0" placeholder="auto"></label>
-              <label>Output directory <input id="extractOutputDir" type="text" placeholder="configured cover cache"></label>
+              <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
+              <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="auto"></label>
+              <label>输出目录 <input id="extractOutputDir" type="text" placeholder="使用配置的封面缓存目录"></label>
             </div>
-            <button id="extractBtn">Extract covers</button>
+            <button id="extractBtn">扩展名ract covers</button>
           </div>
           <div class="card stack">
-            <h2>Apply OCR Map</h2>
-            <label>OCR map JSON
+            <h2>应用 OCR 映射</h2>
+            <label>OCR 映射 JSON
               <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"Drama","episode":"1","confidence":0.98}}'></textarea>
             </label>
             <div class="grid">
-              <label>OCR map path <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
-              <label>Cover root <input id="coverRoot" type="text" placeholder="configured cover cache"></label>
-              <label>Output root <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
-              <label>Source folder <input id="sourceFolder" type="text" placeholder="optional"></label>
-              <label>Min confidence <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="configured default"></label>
-              <label class="check"><input id="dryRun" type="checkbox" checked> Dry run</label>
+              <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
+              <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
+              <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
+              <label>原始来源文件夹 <input id="source文件夹" type="text" placeholder="optional"></label>
+              <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="configured default"></label>
+              <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
             </div>
-            <button id="applyBtn">Apply map</button>
+            <button id="applyBtn">应用映射</button>
           </div>
         </div>
         <div class="wide-grid">
           <div class="card">
-            <div class="section-head"><h2>Tasks</h2><button id="refreshTasksBtn" class="ghost">Refresh</button></div>
-            <table><thead><tr><th>Kind</th><th>Status</th><th>Created</th><th>Detail</th></tr></thead><tbody id="tasksRows"></tbody></table>
+            <div class="section-head"><h2>任务</h2><button id="refresh任务Btn" class="ghost">刷新</button></div>
+            <table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table>
           </div>
           <div class="card stack">
-            <h2>Hardlink Plan Viewer</h2>
-            <label>Folder <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
-            <button id="loadPlanBtn" class="secondary">Load plan</button>
+            <h2>硬链接计划查看器</h2>
+            <label>文件夹 <input id="plan文件夹" type="text" placeholder="/downloads_ocr"></label>
+            <button id="loadPlanBtn" class="secondary">加载计划</button>
             <pre id="planOutput"></pre>
           </div>
         </div>
-        <pre id="ocrStatus"></pre>
+        <pre id="ocr状态"></pre>
       </section>
 
       <section id="logs" class="view">
         <div class="toolbar">
-          <h2>Logs and Diagnostics</h2>
-          <button id="statusBtn" class="secondary">Refresh status</button>
+          <h2>日志与诊断</h2>
+          <button id="statusBtn" class="secondary">刷新 status</button>
         </div>
         <pre id="status"></pre>
       </section>
@@ -325,7 +325,7 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let currentConfig = {};
+    let current配置 = {};
     let taskTimer = null;
 
     function headers() {
@@ -358,7 +358,7 @@
     async function withButton(button, fn) {
       const old = button.textContent;
       button.disabled = true;
-      button.textContent = "Working...";
+      button.textContent = "处理中...";
       try { return await fn(); }
       finally { button.disabled = false; button.textContent = old; }
     }
@@ -373,32 +373,32 @@
     });
 
     function fillForm(config) {
-      currentConfig = config || {};
-      $("apiId").value = currentConfig.api_id || "";
+      current配置 = config || {};
+      $("apiId").value = current配置.api_id || "";
       $("apiHash").value = "";
-      $("phoneNumber").value = currentConfig.phone_number || "";
-      $("downloadDir").value = currentConfig.download_dir || "/downloads";
-      $("flatStructure").checked = Boolean(currentConfig.flat_structure);
-      const filters = currentConfig.global_filters || {};
+      $("phoneNumber").value = current配置.phone_number || "";
+      $("downloadDir").value = current配置.download_dir || "/downloads";
+      $("flatStructure").checked = Boolean(current配置.flat_structure);
+      const filters = current配置.global_filters || {};
       $("extensions").value = (filters.extensions || []).join(",");
       $("onlyAfter").value = filters.only_after || "";
       $("onlyBefore").value = filters.only_before || "";
-      const daemon = currentConfig.daemon || {};
+      const daemon = current配置.daemon || {};
       $("daemonEnabled").checked = Boolean(daemon.enabled);
       $("daemonInterval").value = daemon.check_interval || 300;
-      const proxy = currentConfig.proxy || {};
+      const proxy = current配置.proxy || {};
       $("proxyEnabled").checked = Boolean(proxy.enabled);
-      $("proxyScheme").value = proxy.scheme || "socks5";
-      $("proxyHost").value = proxy.host || proxy.hostname || "";
-      $("proxyPort").value = proxy.port || "";
-      $("proxyUsername").value = proxy.username || "";
-      $("proxyPassword").value = "";
-      $("sources").value = (currentConfig.sources || []).map((source) => {
+      $("proxy协议").value = proxy.scheme || "socks5";
+      $("proxy主机").value = proxy.host || proxy.hostname || "";
+      $("proxy端口").value = proxy.port || "";
+      $("proxy用户名").value = proxy.username || "";
+      $("proxy密码").value = "";
+      $("sources").value = (current配置.sources || []).map((source) => {
         const id = source.url || source.chat_id || "";
         return source.name ? `${id}, ${source.name}` : String(id);
       }).join("\n");
     }
-    function parseSources() {
+    function parse来源() {
       return $("sources").value.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
         const [id, ...nameParts] = line.split(",");
         const value = id.trim();
@@ -411,14 +411,14 @@
       });
     }
     function buildPayload() {
-      const payload = {...currentConfig};
+      const payload = {...current配置};
       payload.api_id = Number($("apiId").value);
       if ($("apiHash").value.trim()) payload.api_hash = $("apiHash").value.trim();
       else if (!payload.api_hash) payload.api_hash = "";
       payload.phone_number = $("phoneNumber").value.trim() || null;
       payload.download_dir = $("downloadDir").value.trim() || "/downloads";
       payload.flat_structure = $("flatStructure").checked;
-      payload.sources = parseSources();
+      payload.sources = parse来源();
       payload.global_filters = {
         ...(payload.global_filters || {}),
         extensions: $("extensions").value.split(",").map((v) => v.trim()).filter(Boolean),
@@ -429,46 +429,46 @@
       payload.proxy = {
         ...(payload.proxy || {}),
         enabled: $("proxyEnabled").checked,
-        scheme: $("proxyScheme").value,
-        host: $("proxyHost").value.trim() || null,
-        port: $("proxyPort").value ? Number($("proxyPort").value) : null,
-        username: $("proxyUsername").value.trim() || null,
+        scheme: $("proxy协议").value,
+        host: $("proxy主机").value.trim() || null,
+        port: $("proxy端口").value ? Number($("proxy端口").value) : null,
+        username: $("proxy用户名").value.trim() || null,
       };
-      if ($("proxyPassword").value.trim()) payload.proxy.password = $("proxyPassword").value.trim();
+      if ($("proxy密码").value.trim()) payload.proxy.password = $("proxy密码").value.trim();
       return payload;
     }
 
-    async function loadConfig() {
+    async function load配置() {
       const data = await api("/api/config");
       fillForm(data.config || {});
       const warnings = [];
-      if (!data.token_required) warnings.push("TDL_WEB_TOKEN is not set. Keep this service bound to localhost or a trusted network.");
-      if (data.env_overrides && data.env_overrides.length) warnings.push(`TDL_ environment variables override YAML: ${data.env_overrides.join(", ")}`);
+      if (!data.token_required) warnings.push("未设置 TDL_WEB_TOKEN。请仅在局域网/可信网络访问此服务。");
+      if (data.env_overrides && data.env_overrides.length) warnings.push(`TDL_ 环境变量会覆盖 YAML 配置：${data.env_overrides.join(", ")}`);
       $("warnings").innerHTML = warnings.map((w) => `<div class="notice">${w}</div>`).join("");
       show("result", {config_path: data.config_path});
     }
-    async function saveConfig() {
+    async function save配置() {
       const data = await api("/api/config", {method: "POST", body: JSON.stringify(buildPayload())});
       fillForm(data.config || {});
       show("result", data);
-      await loadOverview();
+      await load总览();
     }
-    async function loadStatus() {
+    async function load状态() {
       const data = await api("/api/status");
       show("status", data);
       $("pendingMetric").textContent = data.state?.pending_count ?? 0;
       $("statePath").textContent = data.state?.path || "-";
-      const ok = data.health_status?.exists && data.health_status?.status !== "unhealthy";
-      $("healthMetric").textContent = data.health_status?.status || (data.health_status?.exists ? "present" : "missing");
-      $("healthPill").innerHTML = `<i class="dot ${ok ? "ok" : "warn"}"></i>${data.health_status?.timestamp || "no timestamp"}`;
+      const ok = data.health_status?.exists && data.health_status?.status !== "un健康";
+      $("healthMetric").textContent = data.health_status?.status || (data.health_status?.exists ? "存在" : "缺失");
+      $("healthPill").innerHTML = `<i class="dot ${ok ? "ok" : "warn"}"></i>${data.health_status?.timestamp || "无时间戳"}`;
     }
     async function loadFileSummary() {
-      const data = await api("/api/files/summary");
+      const data = await api("/api/个文件/summary");
       $("sizeMetric").textContent = bytes(data.total_size);
       $("downloadPath").textContent = data.download_dir;
-      $("fileCountPill").textContent = `${Object.values(data.counts_by_extension || {}).reduce((a, b) => a + b, 0)} files`;
+      $("file数量Pill").textContent = `${Object.values(data.counts_by_extension || {}).reduce((a, b) => a + b, 0)} 个文件`;
       $("latestFiles").innerHTML = "";
-      (data.latest_files || []).forEach((file) => {
+      (data.latest_个文件 || []).forEach((file) => {
         const tr = document.createElement("tr");
         tr.append(cell(file.name));
         tr.append(cell(bytes(file.size)));
@@ -483,18 +483,18 @@
         $("extensionRows").append(tr);
       });
     }
-    async function loadOcrStatus() {
+    async function loadOcr状态() {
       const data = await api("/api/ocr/status");
       $("coverMetric").textContent = data.cover_candidates || 0;
       $("coverPath").textContent = data.cover_cache_dir || "-";
       if (!$("outputRoot").value) $("outputRoot").value = data.output_dir || "";
       if (!$("coverRoot").value) $("coverRoot").value = data.cover_cache_dir || "";
-      show("ocrStatus", data);
+      show("ocr状态", data);
     }
-    async function loadOverview() {
-      await Promise.all([loadStatus(), loadFileSummary(), loadOcrStatus(), loadTasks()]);
+    async function load总览() {
+      await Promise.all([load状态(), loadFileSummary(), loadOcr状态(), load任务()]);
     }
-    async function loadTasks() {
+    async function load任务() {
       const data = await api("/api/tasks");
       $("tasksRows").innerHTML = "";
       (data.tasks || []).forEach((task) => {
@@ -506,17 +506,17 @@
         $("tasksRows").append(tr);
       });
     }
-    function scheduleTasks() {
+    function schedule任务() {
       if (taskTimer) clearInterval(taskTimer);
-      taskTimer = setInterval(() => loadTasks().catch((e) => show("ocrStatus", String(e))), 4000);
+      taskTimer = setInterval(() => load任务().catch((e) => show("ocr状态", String(e))), 4000);
     }
 
-    $("reloadBtn").addEventListener("click", () => loadConfig().catch((e) => show("result", String(e))));
-    $("saveBtn").addEventListener("click", () => withButton($("saveBtn"), saveConfig).catch((e) => show("result", String(e))));
-    $("statusBtn").addEventListener("click", () => loadStatus().catch((e) => show("status", String(e))));
-    $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("status", String(e))));
-    $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcrStatus(), loadTasks()]).catch((e) => show("ocrStatus", String(e))));
-    $("refreshTasksBtn").addEventListener("click", () => loadTasks().catch((e) => show("ocrStatus", String(e))));
+    $("reloadBtn").addEventListener("click", () => load配置().catch((e) => show("result", String(e))));
+    $("saveBtn").addEventListener("click", () => withButton($("saveBtn"), save配置).catch((e) => show("result", String(e))));
+    $("statusBtn").addEventListener("click", () => load状态().catch((e) => show("status", String(e))));
+    $("refresh总览Btn").addEventListener("click", () => load总览().catch((e) => show("status", String(e))));
+    $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcr状态(), load任务()]).catch((e) => show("ocr状态", String(e))));
+    $("refresh任务Btn").addEventListener("click", () => load任务().catch((e) => show("ocr状态", String(e))));
     $("extractBtn").addEventListener("click", () => withButton($("extractBtn"), async () => {
       const payload = {
         source_index: $("extractSourceIndex").value ? Number($("extractSourceIndex").value) : null,
@@ -524,9 +524,9 @@
         output_dir: $("extractOutputDir").value.trim() || null,
       };
       const data = await api("/api/ocr/extract-covers", {method: "POST", body: JSON.stringify(payload)});
-      show("ocrStatus", data);
-      await loadTasks();
-    }).catch((e) => show("ocrStatus", String(e))));
+      show("ocr状态", data);
+      await load任务();
+    }).catch((e) => show("ocr状态", String(e))));
     $("applyBtn").addEventListener("click", () => withButton($("applyBtn"), async () => {
       let ocrMapJson = null;
       if ($("ocrMapJson").value.trim()) ocrMapJson = JSON.parse($("ocrMapJson").value);
@@ -535,21 +535,21 @@
         ocr_map_path: $("ocrMapPath").value.trim() || null,
         cover_root: $("coverRoot").value.trim() || null,
         output_root: $("outputRoot").value.trim(),
-        source_folder: $("sourceFolder").value.trim() || null,
+        source_folder: $("source文件夹").value.trim() || null,
         min_confidence: $("minConfidence").value ? Number($("minConfidence").value) : null,
         dry_run: $("dryRun").checked,
       };
       const data = await api("/api/ocr/apply-map", {method: "POST", body: JSON.stringify(payload)});
-      if (!$("planFolder").value) $("planFolder").value = payload.output_root;
-      show("ocrStatus", data);
-      await loadTasks();
-    }).catch((e) => show("ocrStatus", String(e))));
+      if (!$("plan文件夹").value) $("plan文件夹").value = payload.output_root;
+      show("ocr状态", data);
+      await load任务();
+    }).catch((e) => show("ocr状态", String(e))));
     $("loadPlanBtn").addEventListener("click", () => withButton($("loadPlanBtn"), async () => {
-      const data = await api(`/api/ocr/plan?path=${encodeURIComponent($("planFolder").value.trim())}`);
+      const data = await api(`/api/ocr/plan?path=${encodeURIComponent($("plan文件夹").value.trim())}`);
       show("planOutput", data);
     }).catch((e) => show("planOutput", String(e))));
 
-    loadConfig().then(loadOverview).then(scheduleTasks).catch((e) => show("result", String(e)));
+    load配置().then(load总览).then(schedule任务).catch((e) => show("result", String(e)));
   </script>
 </body>
 </html>
