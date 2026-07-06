@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from src.web.app import TASKS, apply_map, files_summary, ocr_plan, ocr_status
+from src.web.app import TASKS, apply_map, files_summary, index, ocr_plan, ocr_status
 
 
 def _write_config(path, download_dir, session_dir):
@@ -52,6 +52,16 @@ def _state_db(path):
 
 def _request():
     return Request({"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""})
+
+
+@pytest.mark.asyncio
+async def test_index_serves_login_shell_when_web_token_is_configured(monkeypatch):
+    monkeypatch.setenv("TDL_WEB_TOKEN", "secret")
+
+    html = await index()
+
+    assert "登录控制台" in html
+    assert "本地直连进入" in html
 
 
 @pytest.mark.asyncio

@@ -317,8 +317,7 @@ def _read_recent_logs(config: dict[str, Any], max_lines: int = 80) -> list[str]:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, authorization: str | None = Header(default=None)):
-    _require_auth(request, authorization)
+async def index():
     return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 

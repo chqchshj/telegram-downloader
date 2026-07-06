@@ -40,6 +40,12 @@
       gap: 16px;
       align-items: center;
     }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: flex-end;
+    }
     h1, h2, h3, p { margin: 0; letter-spacing: 0; }
     h1 { font-size: 18px; font-weight: 650; }
     h2 { font-size: 15px; font-weight: 650; }
@@ -149,6 +155,44 @@
       padding: 10px 12px;
       font-size: 13px;
     }
+    .helper {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .login-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      place-items: center;
+      padding: 22px;
+      background: radial-gradient(circle at 50% 0%, rgba(94,106,210,.16), transparent 34%), rgba(8,9,10,.96);
+    }
+    body.locked .login-screen { display: grid; }
+    body.locked header, body.locked main { display: none; }
+    .login-card {
+      width: min(420px, 100%);
+      border: 1px solid var(--line);
+      background: #0f1011;
+      border-radius: 8px;
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.42);
+    }
+    .login-card h1 { font-size: 20px; }
+    .login-actions { display: grid; gap: 10px; }
+    .error {
+      display: none;
+      border: 1px solid rgba(229,72,77,.4);
+      background: rgba(229,72,77,.1);
+      color: #ffb4b4;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    .error.active { display: block; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     th { color: var(--muted); font-weight: 650; }
@@ -184,11 +228,30 @@
         <h1>Telegram 下载器</h1>
         <p class="muted">配置、下载状态与 OCR 整理工作台</p>
       </div>
-      <label>Web 访问令牌
-        <input id="webToken" type="password" autocomplete="off" placeholder="TDL_WEB_TOKEN">
-      </label>
+      <div class="header-actions">
+        <span id="authModePill" class="pill"><i class="dot ok"></i> 已登录</span>
+        <button id="logoutBtn" class="secondary">退出登录</button>
+      </div>
     </div>
   </header>
+
+  <div id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <div class="stack">
+        <h1>登录控制台</h1>
+        <p class="muted">输入 TDL_WEB_TOKEN 后进入 Web 管理界面。</p>
+      </div>
+      <label>访问令牌
+        <input id="loginToken" type="password" autocomplete="current-password" placeholder="TDL_WEB_TOKEN">
+      </label>
+      <label class="check"><input id="rememberLogin" type="checkbox" checked> 记住登录</label>
+      <div id="loginError" class="error"></div>
+      <div class="login-actions">
+        <button id="loginBtn" type="submit">登录控制台</button>
+        <button id="directLoginBtn" type="button" class="secondary" style="display:none">本地直连进入</button>
+      </div>
+    </form>
+  </div>
 
   <main>
     <nav>
@@ -244,7 +307,7 @@
         <div class="card stack">
           <h2>来源</h2>
           <label>每行一个来源：URL 或 chat_id，逗号后可写显示名称
-            <textarea id="sources" spellcheck="false" placeholder="https://t.me/example_channel, Example"></textarea>
+            <textarea id="sources" spellcheck="false" placeholder="https://t.me/example_channel, 示例频道"></textarea>
           </label>
         </div>
         <div class="card stack">
@@ -272,27 +335,28 @@
           <h2>OCR 整理</h2>
           <button id="refreshOcrBtn" class="secondary">刷新</button>
         </div>
+        <p class="helper">流程：提取封面 → 粘贴 OCR 结果 → dry-run 预览 → 确认后生成硬链接目录。</p>
         <div class="grid">
           <div class="card stack">
             <h2>封面提取</h2>
             <div class="grid">
               <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
-              <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="auto"></label>
+              <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="自动"></label>
               <label>输出目录 <input id="extractOutputDir" type="text" placeholder="使用配置的封面缓存目录"></label>
             </div>
-            <button id="extractBtn">扩展名ract covers</button>
+            <button id="extractBtn">提取封面</button>
           </div>
           <div class="card stack">
             <h2>应用 OCR 映射</h2>
             <label>OCR 映射 JSON
-              <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"Drama","episode":"1","confidence":0.98}}'></textarea>
+              <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
             </label>
             <div class="grid">
               <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
               <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
               <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
-              <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="optional"></label>
-              <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="configured default"></label>
+              <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="可选"></label>
+              <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="使用配置默认值"></label>
               <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
             </div>
             <button id="applyBtn">应用映射</button>
@@ -316,7 +380,7 @@
       <section id="logs" class="view">
         <div class="toolbar">
           <h2>日志与诊断</h2>
-          <button id="statusBtn" class="secondary">刷新 status</button>
+          <button id="statusBtn" class="secondary">刷新诊断</button>
         </div>
         <pre id="status"></pre>
       </section>
@@ -325,14 +389,36 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let current配置 = {};
+    let currentConfig = {};
     let taskTimer = null;
+    let currentToken = sessionStorage.getItem("tdlWebToken") || localStorage.getItem("tdlWebToken") || "";
+    let tokenRequired = true;
 
     function headers() {
-      const token = $("webToken").value.trim();
       const h = {"Content-Type": "application/json"};
-      if (token) h.Authorization = `Bearer ${token}`;
+      if (currentToken) h.Authorization = `Bearer ${currentToken}`;
       return h;
+    }
+    function setLocked(locked) {
+      document.body.classList.toggle("locked", locked);
+      $("loginToken").value = "";
+    }
+    function showLoginError(message) {
+      $("loginError").textContent = message;
+      $("loginError").classList.add("active");
+    }
+    function saveToken(token, remember) {
+      currentToken = token;
+      localStorage.removeItem("tdlWebToken");
+      sessionStorage.removeItem("tdlWebToken");
+      if (!token) return;
+      if (remember) localStorage.setItem("tdlWebToken", token);
+      else sessionStorage.setItem("tdlWebToken", token);
+    }
+    function clearAuth() {
+      currentToken = "";
+      localStorage.removeItem("tdlWebToken");
+      sessionStorage.removeItem("tdlWebToken");
     }
     function show(id, value) {
       $(id).textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -351,7 +437,8 @@
     }
     async function api(path, options = {}) {
       const response = await fetch(path, {...options, headers: {...headers(), ...(options.headers || {})}});
-      const data = await response.json();
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
       if (!response.ok) throw new Error(JSON.stringify(data));
       return data;
     }
@@ -361,6 +448,27 @@
       button.textContent = "处理中...";
       try { return await fn(); }
       finally { button.disabled = false; button.textContent = old; }
+    }
+    function healthLabel(health) {
+      if (!health?.exists) return {text: "未知", dot: "warn"};
+      const raw = String(health.status || "").toLowerCase();
+      if (raw === "healthy" || raw === "ok" || raw === "健康") return {text: "健康", dot: "ok"};
+      if (raw === "unhealthy" || raw === "error" || raw === "异常") return {text: "异常", dot: "bad"};
+      return {text: "未知", dot: "warn"};
+    }
+    function taskStatusLabel(status) {
+      return {
+        queued: "排队中",
+        running: "运行中",
+        succeeded: "成功",
+        failed: "失败",
+      }[status] || status || "";
+    }
+    function taskKindLabel(kind) {
+      return {
+        "ocr.extract-covers": "提取封面",
+        "ocr.apply-map": "应用映射",
+      }[kind] || kind || "";
     }
 
     document.querySelectorAll(".tab").forEach((tab) => {
@@ -373,27 +481,27 @@
     });
 
     function fillForm(config) {
-      current配置 = config || {};
-      $("apiId").value = current配置.api_id || "";
+      currentConfig = config || {};
+      $("apiId").value = currentConfig.api_id || "";
       $("apiHash").value = "";
-      $("phoneNumber").value = current配置.phone_number || "";
-      $("downloadDir").value = current配置.download_dir || "/downloads";
-      $("flatStructure").checked = Boolean(current配置.flat_structure);
-      const filters = current配置.global_filters || {};
+      $("phoneNumber").value = currentConfig.phone_number || "";
+      $("downloadDir").value = currentConfig.download_dir || "/downloads";
+      $("flatStructure").checked = Boolean(currentConfig.flat_structure);
+      const filters = currentConfig.global_filters || {};
       $("extensions").value = (filters.extensions || []).join(",");
       $("onlyAfter").value = filters.only_after || "";
       $("onlyBefore").value = filters.only_before || "";
-      const daemon = current配置.daemon || {};
+      const daemon = currentConfig.daemon || {};
       $("daemonEnabled").checked = Boolean(daemon.enabled);
       $("daemonInterval").value = daemon.check_interval || 300;
-      const proxy = current配置.proxy || {};
+      const proxy = currentConfig.proxy || {};
       $("proxyEnabled").checked = Boolean(proxy.enabled);
       $("proxyScheme").value = proxy.scheme || "socks5";
       $("proxyHost").value = proxy.host || proxy.hostname || "";
       $("proxyPort").value = proxy.port || "";
       $("proxyUsername").value = proxy.username || "";
       $("proxyPassword").value = "";
-      $("sources").value = (current配置.sources || []).map((source) => {
+      $("sources").value = (currentConfig.sources || []).map((source) => {
         const id = source.url || source.chat_id || "";
         return source.name ? `${id}, ${source.name}` : String(id);
       }).join("\n");
@@ -411,7 +519,7 @@
       });
     }
     function buildPayload() {
-      const payload = {...current配置};
+      const payload = {...currentConfig};
       payload.api_id = Number($("apiId").value);
       if ($("apiHash").value.trim()) payload.api_hash = $("apiHash").value.trim();
       else if (!payload.api_hash) payload.api_hash = "";
@@ -440,12 +548,18 @@
 
     async function loadConfig() {
       const data = await api("/api/config");
+      tokenRequired = Boolean(data.token_required);
+      $("directLoginBtn").style.display = tokenRequired ? "none" : "";
+      $("authModePill").innerHTML = tokenRequired
+        ? `<i class="dot ok"></i> 令牌登录`
+        : `<i class="dot warn"></i> 本地直连`;
       fillForm(data.config || {});
       const warnings = [];
       if (!data.token_required) warnings.push("未设置 TDL_WEB_TOKEN。请仅在局域网/可信网络访问此服务。");
       if (data.env_overrides && data.env_overrides.length) warnings.push(`TDL_ 环境变量会覆盖 YAML 配置：${data.env_overrides.join(", ")}`);
       $("warnings").innerHTML = warnings.map((w) => `<div class="notice">${w}</div>`).join("");
       show("result", {config_path: data.config_path});
+      return data;
     }
     async function saveConfig() {
       const data = await api("/api/config", {method: "POST", body: JSON.stringify(buildPayload())});
@@ -458,9 +572,9 @@
       show("status", data);
       $("pendingMetric").textContent = data.state?.pending_count ?? 0;
       $("statePath").textContent = data.state?.path || "-";
-      const ok = data.health_status?.exists && data.health_status?.status !== "un健康";
-      $("healthMetric").textContent = data.health_status?.status || (data.health_status?.exists ? "存在" : "缺失");
-      $("healthPill").innerHTML = `<i class="dot ${ok ? "ok" : "warn"}"></i>${data.health_status?.timestamp || "无时间戳"}`;
+      const health = healthLabel(data.health_status);
+      $("healthMetric").textContent = health.text;
+      $("healthPill").innerHTML = `<i class="dot ${health.dot}"></i>${data.health_status?.timestamp || "无时间戳"}`;
     }
     async function loadFileSummary() {
       const data = await api("/api/files/summary");
@@ -468,7 +582,7 @@
       $("downloadPath").textContent = data.download_dir;
       $("fileCountPill").textContent = `${Object.values(data.counts_by_extension || {}).reduce((a, b) => a + b, 0)} 个文件`;
       $("latestFiles").innerHTML = "";
-      (data.latest_个文件 || []).forEach((file) => {
+      (data.latest_files || []).forEach((file) => {
         const tr = document.createElement("tr");
         tr.append(cell(file.name));
         tr.append(cell(bytes(file.size)));
@@ -499,8 +613,8 @@
       $("tasksRows").innerHTML = "";
       (data.tasks || []).forEach((task) => {
         const tr = document.createElement("tr");
-        tr.append(cell(task.kind));
-        tr.append(cell(task.status));
+        tr.append(cell(taskKindLabel(task.kind)));
+        tr.append(cell(taskStatusLabel(task.status)));
         tr.append(cell(task.created_at));
         tr.append(cell(task.error || task.output || JSON.stringify(task.result || task.input || {})));
         $("tasksRows").append(tr);
@@ -509,6 +623,37 @@
     function scheduleTasks() {
       if (taskTimer) clearInterval(taskTimer);
       taskTimer = setInterval(() => loadTasks().catch((e) => show("ocrStatus", String(e))), 4000);
+    }
+    async function enterDashboard() {
+      await loadConfig();
+      $("loginError").classList.remove("active");
+      setLocked(false);
+      await loadOverview();
+      scheduleTasks();
+    }
+    async function tryStoredLogin() {
+      if (currentToken) {
+        try {
+          await enterDashboard();
+          return;
+        } catch (e) {
+          clearAuth();
+          showLoginError("访问令牌无效或已变更，请重新登录。");
+          setLocked(true);
+          return;
+        }
+      }
+      try {
+        await loadConfig();
+        if (!tokenRequired) {
+          setLocked(true);
+          $("directLoginBtn").style.display = "";
+          return;
+        }
+      } catch (e) {
+        $("directLoginBtn").style.display = "none";
+      }
+      setLocked(true);
     }
 
     $("reloadBtn").addEventListener("click", () => loadConfig().catch((e) => show("result", String(e))));
@@ -548,8 +693,35 @@
       const data = await api(`/api/ocr/plan?path=${encodeURIComponent($("planFolder").value.trim())}`);
       show("planOutput", data);
     }).catch((e) => show("planOutput", String(e))));
+    $("loginForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const token = $("loginToken").value.trim();
+      if (!token) {
+        showLoginError("请输入访问令牌。");
+        return;
+      }
+      saveToken(token, $("rememberLogin").checked);
+      withButton($("loginBtn"), enterDashboard).catch((e) => {
+        clearAuth();
+        showLoginError("访问令牌不正确，或服务暂时无法访问。");
+        setLocked(true);
+      });
+    });
+    $("directLoginBtn").addEventListener("click", () => {
+      clearAuth();
+      withButton($("directLoginBtn"), enterDashboard).catch((e) => {
+        showLoginError("当前服务需要访问令牌，无法本地直连进入。");
+        setLocked(true);
+      });
+    });
+    $("logoutBtn").addEventListener("click", () => {
+      clearAuth();
+      if (taskTimer) clearInterval(taskTimer);
+      setLocked(true);
+    });
 
-    loadConfig().then(loadOverview).then(scheduleTasks).catch((e) => show("result", String(e)));
+    setLocked(true);
+    tryStoredLogin();
   </script>
 </body>
 </html>
