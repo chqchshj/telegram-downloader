@@ -57,6 +57,7 @@ class OcrOrganizerConfig(BaseModel):
     output_dir: Optional[Path] = None
     cover_cache_dir: Optional[Path] = None
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    backfill_recent_limit: int = Field(default=50, ge=1, le=500)
     llm_verify_enabled: bool = Field(default=False)
     llm_auto_apply: bool = Field(default=False)
     llm_base_url: Optional[str] = None

@@ -63,6 +63,7 @@ INT_FIELDS = {
     "base_delay",
     "max_delay",
     "port",
+    "backfill_recent_limit",
 }
 
 # Field name endings that indicate integers (for nested fields)
@@ -111,6 +112,7 @@ NESTED_MAPPINGS = {
     "ocr_organizer_output_dir": ("ocr_organizer", "output_dir"),
     "ocr_organizer_cover_cache_dir": ("ocr_organizer", "cover_cache_dir"),
     "ocr_organizer_min_confidence": ("ocr_organizer", "min_confidence"),
+    "ocr_organizer_backfill_recent_limit": ("ocr_organizer", "backfill_recent_limit"),
     "ocr_organizer_llm_verify_enabled": ("ocr_organizer", "llm_verify_enabled"),
     "ocr_organizer_llm_auto_apply": ("ocr_organizer", "llm_auto_apply"),
     "ocr_organizer_llm_base_url": ("ocr_organizer", "llm_base_url"),

@@ -45,7 +45,13 @@ from src.state import (
 )
 from src.client import create_client, download_media_with_retry
 from src.notifications import NotificationManager, DiscordNotifier, GenericWebhook
-from src.ocr_organizer import auto_verify_and_apply, extract_cover_candidates
+from src.ocr_organizer import (
+    DEFAULT_OCR_BACKFILL_RECENT_LIMIT,
+    auto_verify_and_apply,
+    extract_cover_candidates,
+    load_recent_video_history_rows,
+    select_ocr_backfill_message_ids,
+)
 
 
 def setup_logging(log_file: str | Path | None, verbosity: str) -> logging.Logger:
@@ -262,23 +268,73 @@ async def extract_ocr_covers_after_batch(
     source: BaseSource,
     message_ids: set[int],
 ) -> None:
-    """Non-fatal post-download cover candidate extraction for OCR workflow."""
+    """Non-fatal post-download/backfill cover extraction for OCR workflow."""
     organizer_cfg = getattr(cfg, "ocr_organizer", None)
-    if not organizer_cfg or not organizer_cfg.enabled or not message_ids:
+    if not organizer_cfg or not organizer_cfg.enabled:
         return
 
-    output_dir = organizer_cfg.cover_cache_dir or (Path(cfg.session_dir) / "ocr_covers")
+    cover_dir = organizer_cfg.cover_cache_dir or (Path(cfg.session_dir) / "ocr_covers")
+    state_db = Path(cfg.session_dir) / "state.db"
+    output_root = organizer_cfg.output_dir or (Path(cfg.download_dir).parent / "downloads_ocr")
+    fresh_message_ids = {int(message_id) for message_id in message_ids}
+    backfill_message_ids: set[int] = set()
+
     try:
-        for message_id in sorted(message_ids):
-            await extract_cover_candidates(client, source.chat_id, message_id, output_dir)
+        recent_limit = int(
+            getattr(organizer_cfg, "backfill_recent_limit", DEFAULT_OCR_BACKFILL_RECENT_LIMIT)
+            or DEFAULT_OCR_BACKFILL_RECENT_LIMIT
+        )
+    except (TypeError, ValueError):
+        recent_limit = DEFAULT_OCR_BACKFILL_RECENT_LIMIT
+
+    try:
+        source_key = source.get_cursor_key()
+        rows = load_recent_video_history_rows(
+            state_db,
+            limit=recent_limit,
+            source_key=source_key,
+        )
+        selection = select_ocr_backfill_message_ids(
+            rows,
+            cover_root=cover_dir,
+            download_root=cfg.download_dir,
+            output_root=output_root,
+            source_key=source_key,
+            exclude_message_ids=fresh_message_ids,
+        )
+        backfill_message_ids = set(selection.selected_message_ids)
+        log.info(
+            "OCR backfill candidate count=%s recent_limit=%s source=%s",
+            selection.candidate_count,
+            recent_limit,
+            source_key,
+        )
+        if selection.selected_message_ids:
+            log.info("OCR backfill message IDs selected: %s", selection.selected_message_ids)
+        else:
+            skip_reasons = selection.skipped or {"no_recent_video_history": 1}
+            log.info("OCR backfill nothing due; skip reasons=%s", skip_reasons)
+    except Exception as e:
+        log.error(f"OCR backfill selection failed (non-fatal): {e}", exc_info=True)
+
+    selected_message_ids = fresh_message_ids | backfill_message_ids
+    if not selected_message_ids:
+        return
+
+    try:
+        if fresh_message_ids:
+            log.info("OCR organizer fresh message IDs selected: %s", sorted(fresh_message_ids))
+        log.info("OCR organizer processing message IDs: %s", sorted(selected_message_ids))
+        for message_id in sorted(selected_message_ids):
+            await extract_cover_candidates(client, source.chat_id, message_id, cover_dir)
         llm_result = None
         if getattr(organizer_cfg, "llm_verify_enabled", False):
             llm_result = auto_verify_and_apply(
-                cover_root=output_dir,
-                verify_output_dir=output_dir,
+                cover_root=cover_dir,
+                verify_output_dir=cover_dir,
                 download_root=cfg.download_dir,
-                state_db=Path(cfg.session_dir) / "state.db",
-                output_dir=organizer_cfg.output_dir or (Path(cfg.download_dir).parent / "downloads_ocr"),
+                state_db=state_db,
+                output_dir=output_root,
                 auto_apply=bool(getattr(organizer_cfg, "llm_auto_apply", False)),
                 base_url=getattr(organizer_cfg, "llm_base_url", None),
                 api_key=getattr(organizer_cfg, "llm_api_key", None),
@@ -286,30 +342,36 @@ async def extract_ocr_covers_after_batch(
                 min_confidence=getattr(organizer_cfg, "llm_auto_apply_min_confidence", 0.92),
                 require_episode=getattr(organizer_cfg, "llm_require_episode", True),
                 reject_non_drama=getattr(organizer_cfg, "llm_reject_non_drama", True),
-                message_ids=sorted(message_ids),
+                message_ids=sorted(selected_message_ids),
             )
         log.info(
             "OCR organizer cover candidates written to %s. "
             "Run: python -m src.ocr_organizer apply-map --download-root %s "
             "--state-db %s --ocr-map /path/map.json --cover-root %s --output-root %s",
-            output_dir,
+            cover_dir,
             cfg.download_dir,
-            Path(cfg.session_dir) / "state.db",
-            output_dir,
-            organizer_cfg.output_dir or "<separate-output-root>",
+            state_db,
+            cover_dir,
+            output_root,
         )
         if llm_result:
             verify = llm_result["verify"]
             apply = llm_result.get("apply") or {}
             log.info(
-                "OCR LLM verify complete: accepted=%s review=%s raw=%s map=%s review_queue=%s auto_output=%s",
+                "OCR LLM verify/apply summary: accepted=%s review=%s raw=%s "
+                "map=%s review_queue=%s auto_output=%s planned=%s skipped=%s missing=%s",
                 verify.get("accepted"),
                 verify.get("review"),
                 verify.get("raw"),
                 verify.get("ocr_map_auto_path"),
                 verify.get("ocr_review_queue_path"),
                 apply.get("output_root"),
+                apply.get("planned"),
+                apply.get("skipped"),
+                apply.get("missing"),
             )
+        else:
+            log.info("OCR LLM verify/apply skipped: llm_verify_enabled=false")
     except Exception as e:
         log.error(f"OCR organizer cover extraction failed (non-fatal): {e}", exc_info=True)
 
@@ -442,6 +504,13 @@ async def run_check(
 
             if not scanned_ids:
                 log.info("No new matching documents.")
+                await extract_ocr_covers_after_batch(
+                    cfg,
+                    log,
+                    client,
+                    source,
+                    set(),
+                )
                 continue
 
             pending.add_batch(cursor_key, scanned_ids)

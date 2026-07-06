@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import sqlite3
+from collections import Counter
 from datetime import datetime
 import time
 from dataclasses import asdict, dataclass
@@ -33,6 +34,7 @@ OCR_MAP_AUTO_FILE = "ocr_map_auto.json"
 OCR_REVIEW_QUEUE_FILE = "ocr_review_queue.json"
 OCR_VERIFY_RAW_FILE = "ocr_verify_raw.json"
 DEFAULT_LLM_BASE_URL = "http://192.168.2.3:8318/v1"
+DEFAULT_OCR_BACKFILL_RECENT_LIMIT = 50
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,15 @@ class PlanItem:
     target: str
     cover: str | None = None
     action: str = "link"
+
+
+@dataclass(frozen=True)
+class OcrBackfillSelection:
+    """Bounded OCR backfill selection result."""
+
+    candidate_count: int
+    selected_message_ids: list[int]
+    skipped: dict[str, int]
 
 
 def normalize_episode_suffix(episode: str | int | None) -> str:
@@ -214,6 +225,50 @@ def _load_history_rows(state_db: str | Path) -> list[HistoryRow]:
     return [HistoryRow(**dict(row)) for row in rows]
 
 
+def load_recent_video_history_rows(
+    state_db: str | Path,
+    *,
+    limit: int = DEFAULT_OCR_BACKFILL_RECENT_LIMIT,
+    source_key: str | None = None,
+) -> list[HistoryRow]:
+    """Load newest bounded video-looking rows from download_history."""
+    state_path = Path(state_db)
+    if not state_path.exists():
+        return []
+
+    bounded_limit = max(1, int(limit or DEFAULT_OCR_BACKFILL_RECENT_LIMIT))
+    suffixes = sorted(VIDEO_SUFFIXES)
+    suffix_clause = " OR ".join("LOWER(file_name) LIKE ?" for _ in suffixes)
+    where = [f"({suffix_clause})"]
+    params: list[Any] = [f"%{suffix}" for suffix in suffixes]
+    if source_key:
+        where.append("source_key = ?")
+        params.append(source_key)
+    params.append(bounded_limit)
+
+    connection = sqlite3.connect(state_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT file_unique_id, file_name, file_size, source_key, message_id, downloaded_at
+            FROM download_history
+            WHERE {' AND '.join(where)}
+            ORDER BY message_id DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            rows = []
+        else:
+            raise
+    finally:
+        connection.close()
+    return [HistoryRow(**dict(row)) for row in rows]
+
+
 def _coerce_history_rows(rows: Iterable[HistoryRow | dict[str, Any]]) -> list[HistoryRow]:
     coerced = []
     for row in rows:
@@ -239,6 +294,113 @@ def _load_json(path: str | Path | None) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
     return data if isinstance(data, dict) else {}
+
+
+def _manifest_has_candidates(cover_root: str | Path, message_id: int) -> bool:
+    manifest_path = Path(cover_root) / str(message_id) / "manifest.json"
+    if not manifest_path.exists():
+        return False
+    try:
+        data = _load_json(manifest_path)
+    except (OSError, json.JSONDecodeError):
+        return False
+    candidates = data.get("candidates", []) if isinstance(data, dict) else []
+    return bool(candidates)
+
+
+def _output_plan_paths(output_root: str | Path | None) -> list[Path]:
+    if not output_root:
+        return []
+    root = Path(output_root)
+    if not root.exists():
+        return []
+    paths: list[Path] = []
+    direct = root / "_hardlink_plan.json"
+    if direct.exists():
+        paths.append(direct)
+    paths.extend(
+        path
+        for path in root.glob("auto_*/_hardlink_plan.json")
+        if path.is_file()
+    )
+    return paths
+
+
+def _load_output_plan_message_ids(output_root: str | Path | None) -> set[int]:
+    message_ids: set[int] = set()
+    for plan_path in _output_plan_paths(output_root):
+        try:
+            data = json.loads(plan_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        rows = data if isinstance(data, list) else []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                message_ids.add(int(row["message_id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+    return message_ids
+
+
+def select_ocr_backfill_message_ids(
+    recent_history_rows: Iterable[HistoryRow | dict[str, Any]],
+    *,
+    cover_root: str | Path,
+    download_root: str | Path,
+    output_root: str | Path | None = None,
+    source_key: str | None = None,
+    exclude_message_ids: Iterable[int] | None = None,
+) -> OcrBackfillSelection:
+    """Select recent downloaded videos that still need OCR cover processing."""
+    rows = _coerce_history_rows(recent_history_rows)
+    skipped: Counter[str] = Counter()
+    selected: list[int] = []
+    seen: set[int] = set()
+    excluded = {int(message_id) for message_id in (exclude_message_ids or [])}
+    output_message_ids = _load_output_plan_message_ids(output_root)
+
+    for row in rows:
+        if source_key and row.source_key != source_key:
+            skipped["other_source"] += 1
+            continue
+        if row.message_id in seen:
+            skipped["duplicate_message_id"] += 1
+            continue
+        seen.add(row.message_id)
+        if row.message_id in excluded:
+            skipped["fresh_batch"] += 1
+            continue
+        if Path(row.file_name).suffix.lower() not in VIDEO_SUFFIXES:
+            skipped["not_video"] += 1
+            continue
+        if _manifest_has_candidates(cover_root, row.message_id):
+            skipped["manifest_candidates"] += 1
+            continue
+        if row.message_id in output_message_ids:
+            skipped["existing_output_plan"] += 1
+            continue
+
+        source = resolve_downloaded_media_path(
+            download_root,
+            None,
+            row.file_name,
+            row.file_size,
+        )
+        if source is None:
+            skipped["missing_file"] += 1
+            continue
+        if source.suffix.lower() not in VIDEO_SUFFIXES:
+            skipped["not_video"] += 1
+            continue
+        selected.append(row.message_id)
+
+    return OcrBackfillSelection(
+        candidate_count=len(rows),
+        selected_message_ids=sorted(selected),
+        skipped=dict(sorted(skipped.items())),
+    )
 
 
 def select_preferred_cover_image(manifest: dict[str, Any]) -> Path | None:

@@ -21,7 +21,13 @@ from src.config.web_config import (
     redacted_config,
     save_config_document,
 )
-from src.ocr_organizer import _load_history_rows, create_hardlink_view
+from src.ocr_organizer import (
+    DEFAULT_OCR_BACKFILL_RECENT_LIMIT,
+    _load_history_rows,
+    create_hardlink_view,
+    load_recent_video_history_rows,
+    select_ocr_backfill_message_ids,
+)
 
 
 CONFIG_FILE = Path(os.getenv("TDL_CONFIG_FILE", "/app/config.yaml"))
@@ -100,6 +106,13 @@ def _cover_cache_dir(config: dict[str, Any]) -> Path:
 def _ocr_output_dir(config: dict[str, Any]) -> Path:
     ocr = _ocr_config(config)
     return _resolve_config_path(config, ocr.get("output_dir"), _download_dir(config).parent / "downloads_ocr")
+
+
+def _ocr_backfill_recent_limit(config: dict[str, Any]) -> int:
+    try:
+        return int(_ocr_config(config).get("backfill_recent_limit") or DEFAULT_OCR_BACKFILL_RECENT_LIMIT)
+    except (TypeError, ValueError):
+        return DEFAULT_OCR_BACKFILL_RECENT_LIMIT
 
 
 def _json_item_count(path: Path) -> int:
@@ -520,6 +533,31 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
     auto_map = cover_dir / "ocr_map_auto.json"
     review_queue = cover_dir / "ocr_review_queue.json"
     verify_raw = cover_dir / "ocr_verify_raw.json"
+    backfill_limit = _ocr_backfill_recent_limit(config)
+    backfill_status: dict[str, Any] = {
+        "recent_limit": backfill_limit,
+        "candidate_count": 0,
+        "selected_count": 0,
+        "selected_message_ids": [],
+        "skip_reasons": {},
+    }
+    if state_db.exists():
+        try:
+            rows = load_recent_video_history_rows(state_db, limit=backfill_limit)
+            selection = select_ocr_backfill_message_ids(
+                rows,
+                cover_root=cover_dir,
+                download_root=_download_dir(config),
+                output_root=output_dir,
+            )
+            backfill_status.update({
+                "candidate_count": selection.candidate_count,
+                "selected_count": len(selection.selected_message_ids),
+                "selected_message_ids": selection.selected_message_ids,
+                "skip_reasons": selection.skipped,
+            })
+        except Exception as exc:
+            backfill_status["error"] = str(exc)
 
     return {
         "config": _safe_ocr_config(config),
@@ -539,6 +577,7 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "ocr_map_auto_count": _json_item_count(auto_map),
         "ocr_review_queue_count": _json_item_count(review_queue),
         "ocr_verify_raw_count": _json_item_count(verify_raw),
+        "backfill": backfill_status,
         "latest_auto_output_dirs": latest_auto_output_dirs,
         "recent_hardlink_view_folders": recent_views,
     }

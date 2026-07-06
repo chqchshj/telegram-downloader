@@ -1,6 +1,7 @@
 """Tests for the OCR-map hardlink organizer."""
 import json
 import os
+import sqlite3
 
 import pytest
 
@@ -9,8 +10,10 @@ from src.ocr_organizer import (
     build_ocr_filename,
     build_parser,
     create_hardlink_view,
+    load_recent_video_history_rows,
     normalize_episode_suffix,
     resolve_downloaded_media_path,
+    select_ocr_backfill_message_ids,
     verify_cover_manifests,
 )
 
@@ -54,6 +57,109 @@ def test_resolve_downloaded_media_path_handles_conflict_by_size(temp_dir):
     resolved = resolve_downloaded_media_path(temp_dir, "AI短剧", "episode.mp4", 9)
 
     assert resolved == conflicted
+
+
+def test_load_recent_video_history_rows_bounds_newest_videos_by_source(temp_dir):
+    db_path = temp_dir / "state.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE download_history (
+                file_unique_id TEXT,
+                file_name TEXT,
+                file_size INTEGER,
+                source_key TEXT,
+                message_id INTEGER,
+                downloaded_at TEXT
+            )
+            """
+        )
+        rows = [
+            ("a", "old.mp4", 1, "channel:1", 1, None),
+            ("b", "newer.mkv", 1, "channel:1", 3, None),
+            ("c", "skip.jpg", 1, "channel:1", 5, None),
+            ("d", "other.mp4", 1, "channel:2", 7, None),
+            ("e", "newest.MP4", 1, "channel:1", 9, None),
+        ]
+        conn.executemany(
+            """
+            INSERT INTO download_history
+                (file_unique_id, file_name, file_size, source_key, message_id, downloaded_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    recent = load_recent_video_history_rows(db_path, limit=2, source_key="channel:1")
+
+    assert [row.message_id for row in recent] == [9, 3]
+
+
+def test_load_recent_video_history_rows_returns_empty_without_history_table(temp_dir):
+    missing_db = temp_dir / "missing.db"
+    empty_db = temp_dir / "empty.db"
+    sqlite3.connect(empty_db).close()
+
+    assert load_recent_video_history_rows(missing_db) == []
+    assert load_recent_video_history_rows(empty_db) == []
+    assert not missing_db.exists()
+
+
+def test_select_ocr_backfill_message_ids_skips_processed_outputs_and_missing(temp_dir):
+    download_root = temp_dir / "downloads"
+    source_dir = download_root / "AI短剧"
+    source_dir.mkdir(parents=True)
+    (source_dir / "due.mp4").write_bytes(b"video")
+    (source_dir / "manifest.mp4").write_bytes(b"video")
+    (source_dir / "output.mp4").write_bytes(b"video")
+    (source_dir / "fresh.mp4").write_bytes(b"video")
+
+    cover_root = temp_dir / "covers"
+    manifest_dir = cover_root / "1900"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.json").write_text(
+        json.dumps({
+            "message_id": 1900,
+            "candidates": [{"path": str(manifest_dir / "cover.jpg"), "preferred": True}],
+        }),
+        encoding="utf-8",
+    )
+
+    output_root = temp_dir / "downloads_ocr"
+    auto_dir = output_root / "auto_20260706_120000"
+    auto_dir.mkdir(parents=True)
+    (auto_dir / "_hardlink_plan.json").write_text(
+        json.dumps([{"message_id": 1902, "target": "already-linked.mp4"}]),
+        encoding="utf-8",
+    )
+
+    selection = select_ocr_backfill_message_ids(
+        [
+            {"file_unique_id": "a", "file_name": "due.mp4", "file_size": 5, "source_key": "channel:1", "message_id": 1898},
+            {"file_unique_id": "b", "file_name": "manifest.mp4", "file_size": 5, "source_key": "channel:1", "message_id": 1900},
+            {"file_unique_id": "c", "file_name": "output.mp4", "file_size": 5, "source_key": "channel:1", "message_id": 1902},
+            {"file_unique_id": "d", "file_name": "missing.mp4", "file_size": 7, "source_key": "channel:1", "message_id": 1904},
+            {"file_unique_id": "e", "file_name": "fresh.mp4", "file_size": 5, "source_key": "channel:1", "message_id": 1906},
+        ],
+        cover_root=cover_root,
+        download_root=download_root,
+        output_root=output_root,
+        source_key="channel:1",
+        exclude_message_ids={1906},
+    )
+
+    assert selection.candidate_count == 5
+    assert selection.selected_message_ids == [1898]
+    assert selection.skipped == {
+        "existing_output_plan": 1,
+        "fresh_batch": 1,
+        "manifest_candidates": 1,
+        "missing_file": 1,
+    }
 
 
 def test_create_hardlink_view_creates_separate_links_and_preserves_source(temp_dir):
