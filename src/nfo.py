@@ -68,6 +68,44 @@ def write_episode_nfo(
     return path
 
 
+def write_organized_episode_nfo(
+    video_path: Path,
+    *,
+    series: str,
+    episode_number: int | None = None,
+    title: str = "",
+    message_id: int | None = None,
+    aired: str | None = None,
+) -> tuple[Path | None, Path | None]:
+    """Create Emby/Jellyfin NFO files for an organized hardlink item.
+
+    This is used by the OCR organizer where we no longer have a live Pyrogram
+    Message object, but the hardlink plan still carries series/title/episode and
+    Telegram message_id metadata.
+    """
+    series_nfo = write_tvshow_nfo(video_path.parent, series)
+    episode_nfo = video_path.with_suffix(".nfo")
+    if episode_nfo.exists():
+        return series_nfo, None
+
+    display_title = title or (f"EP{episode_number:02d}" if episode_number else video_path.stem)
+    root = ElementTree.Element("episodedetails")
+    ElementTree.SubElement(root, "title").text = display_title
+    ElementTree.SubElement(root, "showtitle").text = series
+    ElementTree.SubElement(root, "season").text = "1"
+    if episode_number is not None:
+        ElementTree.SubElement(root, "episode").text = str(episode_number)
+    ElementTree.SubElement(root, "plot").text = display_title
+    if aired:
+        ElementTree.SubElement(root, "aired").text = aired
+    if message_id is not None:
+        uniqueid = ElementTree.SubElement(root, "uniqueid", {"type": "telegram_message"})
+        uniqueid.text = str(message_id)
+
+    _write_xml(episode_nfo, root)
+    return series_nfo, episode_nfo
+
+
 def _format_air_date(value: object) -> str | None:
     if isinstance(value, datetime):
         return value.date().isoformat()

@@ -23,6 +23,7 @@ from typing import Any, Iterable
 import requests
 
 from src.media import is_short_drama_episode_media
+from src.nfo import write_organized_episode_nfo
 from src.security.sanitizer import sanitize_filename, validate_path_safety
 
 
@@ -52,7 +53,7 @@ class PlanItem:
 
     message_id: int
     title: str
-    episode: str
+    episode: str | None
     source: str
     target: str
     cover: str | None = None
@@ -553,6 +554,26 @@ def _unique_target(path: Path, used_targets: set[Path] | None = None) -> Path:
     raise RuntimeError(f"Cannot find available target name for {path}")
 
 
+def _episode_to_int(episode: str | int | None) -> int | None:
+    if episode is None:
+        return None
+    match = re.search(r"\d+", str(episode))
+    return int(match.group(0)) if match else None
+
+
+def _write_nfo_for_plan_item(item: PlanItem, dry_run: bool) -> tuple[str | None, str | None]:
+    if dry_run:
+        return None, None
+    series_nfo, episode_nfo = write_organized_episode_nfo(
+        Path(item.target),
+        series=item.title,
+        episode_number=_episode_to_int(item.episode),
+        title=item.episode or Path(item.target).stem,
+        message_id=item.message_id,
+    )
+    return (str(series_nfo) if series_nfo else None, str(episode_nfo) if episode_nfo else None)
+
+
 def _copy_or_link_cover(source: Path, target: Path, dry_run: bool) -> None:
     if dry_run:
         return
@@ -647,6 +668,7 @@ def create_hardlink_view(
     skipped_path = output / "_skipped.json"
     missing_path = output / "_missing.json"
 
+    nfo_written: list[dict[str, str | None]] = []
     if not dry_run:
         for item in plan:
             source = Path(item.source)
@@ -658,6 +680,12 @@ def create_hardlink_view(
                 cover_source = _cover_for_message(cover_data, item.message_id)
                 if cover_source and cover_source.exists():
                     _copy_or_link_cover(cover_source, Path(item.cover), dry_run=False)
+            series_nfo, episode_nfo = _write_nfo_for_plan_item(item, dry_run=False)
+            nfo_written.append({
+                "message_id": str(item.message_id),
+                "series_nfo": series_nfo,
+                "episode_nfo": episode_nfo,
+            })
 
     plan_path.write_text(json.dumps([asdict(item) for item in plan], ensure_ascii=False, indent=2), encoding="utf-8")
     skipped_path.write_text(json.dumps(skipped, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -667,6 +695,7 @@ def create_hardlink_view(
         "planned": len(plan),
         "skipped": len(skipped),
         "missing": len(missing),
+        "nfo_written": sum(1 for item in nfo_written if item.get("episode_nfo")),
         "plan_path": str(plan_path),
         "skipped_path": str(skipped_path),
         "missing_path": str(missing_path),
@@ -715,6 +744,36 @@ def run_apply_map(args: argparse.Namespace) -> None:
         dry_run=args.dry_run,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def generate_nfo_for_plan_root(plan_root: str | Path) -> dict[str, Any]:
+    root = Path(plan_root)
+    plan_path = root / "_hardlink_plan.json"
+    rows = json.loads(plan_path.read_text(encoding="utf-8"))
+    written = []
+    skipped = []
+    for row in rows:
+        if "target" not in row and "video" in row:
+            row = {**row, "target": row["video"], "action": row.get("action", "link")}
+        item = PlanItem(
+            message_id=int(row["message_id"]),
+            title=str(row["title"]),
+            episode=row.get("episode"),
+            source=str(row.get("source", "")),
+            target=str(row["target"]),
+            cover=row.get("cover"),
+            action=str(row.get("action", "link")),
+        )
+        if not Path(item.target).exists():
+            skipped.append({"message_id": item.message_id, "reason": "missing_target"})
+            continue
+        series_nfo, episode_nfo = _write_nfo_for_plan_item(item, dry_run=False)
+        written.append({"message_id": item.message_id, "series_nfo": series_nfo, "episode_nfo": episode_nfo})
+    return {"written": sum(1 for item in written if item.get("episode_nfo")), "processed": len(written), "skipped": len(skipped)}
+
+
+def run_generate_nfo(args: argparse.Namespace) -> None:
+    print(json.dumps(generate_nfo_for_plan_root(args.plan_root), ensure_ascii=False, indent=2))
 
 
 def _parse_message_ids(value: str | None) -> list[int] | None:
@@ -773,6 +832,10 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--reject-non-drama", action=argparse.BooleanOptionalAction, default=True)
     verify.add_argument("--message-ids")
     verify.set_defaults(func=run_llm_verify)
+
+    nfo = subcommands.add_parser("generate-nfo")
+    nfo.add_argument("--plan-root", required=True)
+    nfo.set_defaults(func=run_generate_nfo)
 
     return parser
 
