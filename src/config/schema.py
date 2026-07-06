@@ -48,6 +48,14 @@ class NotificationConfig(BaseModel):
     generic_webhook_url: Optional[HttpUrl] = None
 
 
+class OcrOrganizerConfig(BaseModel):
+    """Optional post-download OCR organizer pipeline configuration."""
+    enabled: bool = Field(default=False)
+    output_dir: Optional[Path] = None
+    cover_cache_dir: Optional[Path] = None
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class FilterConfig(BaseModel):
     """File filtering configuration (legacy, use GlobalFilters)."""
     ebook_exts: list[str] = Field(default=[".epub", ".mobi", ".pdf"])
@@ -168,6 +176,9 @@ class Config(BaseModel):
 
     # Notification configuration
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+
+    # Optional OCR organizer integration. Disabled by default.
+    ocr_organizer: OcrOrganizerConfig = Field(default_factory=OcrOrganizerConfig)
 
     # Legacy fields (DEPRECATED - for backward compatibility with existing downloader.py)
     chat_id: Optional[int] = None

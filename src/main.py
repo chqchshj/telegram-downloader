@@ -26,7 +26,12 @@ from pyrogram.types import Message
 from src.config import load_config, ConfigError
 from src.config.schema import SourceConfig
 from src.config.source_parser import parse_sources, validate_source_access
-from src.media import get_media_filename, get_message_media, is_catalog_message
+from src.media import (
+    get_media_filename,
+    get_message_media,
+    is_catalog_message,
+    is_short_drama_episode_media,
+)
 from src.nfo import write_short_drama_nfo
 from src.organization import build_destination_path, is_duplicate, resolve_conflict
 from src.short_drama import plan_short_drama_assignments
@@ -40,6 +45,7 @@ from src.state import (
 )
 from src.client import create_client, download_media_with_retry
 from src.notifications import NotificationManager, DiscordNotifier, GenericWebhook
+from src.ocr_organizer import extract_cover_candidates
 
 
 def setup_logging(log_file: str, verbosity: str) -> logging.Logger:
@@ -102,7 +108,7 @@ async def download_batch(
     source_config: SourceConfig,
     history: "DownloadHistory | None" = None,
     short_drama_state: "ShortDramaState | None" = None,
-) -> tuple[int, set[int]]:
+) -> tuple[int, set[int], set[int]]:
     """Download a batch of messages concurrently with semaphore limit.
 
     Args:
@@ -120,12 +126,13 @@ async def download_batch(
         short_drama_state: Optional runtime short-drama catalog state
 
     Returns:
-        Tuple of (download_count, failed_message_ids).
+        Tuple of (download_count, failed_message_ids, downloaded_video_message_ids).
         Failed IDs are messages where download_media_with_retry returned False.
         Skips (history hit, duplicate, path error) are NOT failures.
     """
     downloaded = 0
     failed_ids: set[int] = set()
+    downloaded_video_ids: set[int] = set()
     short_drama_assignments: dict[int, ShortDramaAssignment] = {}
     if short_drama_state:
         try:
@@ -211,6 +218,8 @@ async def download_batch(
 
             if success:
                 downloaded += 1
+                if is_short_drama_episode_media(msg, media):
+                    downloaded_video_ids.add(msg.id)
                 cursor_store.set(cursor_key, msg.id)
                 if assignment and assignment.episode_number is not None:
                     try:
@@ -228,7 +237,37 @@ async def download_batch(
         for msg in messages:
             tg.create_task(download_one(msg))
 
-    return downloaded, failed_ids
+    return downloaded, failed_ids, downloaded_video_ids
+
+
+async def extract_ocr_covers_after_batch(
+    cfg,
+    log: logging.Logger,
+    client: Client,
+    source: BaseSource,
+    message_ids: set[int],
+) -> None:
+    """Non-fatal post-download cover candidate extraction for OCR workflow."""
+    organizer_cfg = getattr(cfg, "ocr_organizer", None)
+    if not organizer_cfg or not organizer_cfg.enabled or not message_ids:
+        return
+
+    output_dir = organizer_cfg.cover_cache_dir or (Path(cfg.session_dir) / "ocr_covers")
+    try:
+        for message_id in sorted(message_ids):
+            await extract_cover_candidates(client, source.chat_id, message_id, output_dir)
+        log.info(
+            "OCR organizer cover candidates written to %s. "
+            "Run: python -m src.ocr_organizer apply-map --download-root %s "
+            "--state-db %s --ocr-map /path/map.json --cover-root %s --output-root %s",
+            output_dir,
+            cfg.download_dir,
+            Path(cfg.session_dir) / "state.db",
+            output_dir,
+            organizer_cfg.output_dir or "<separate-output-root>",
+        )
+    except Exception as e:
+        log.error(f"OCR organizer cover extraction failed (non-fatal): {e}", exc_info=True)
 
 
 async def startup_validation(cfg, log, client):
@@ -367,6 +406,7 @@ async def run_check(
         # --- Download phase: pull batches from pending, fetch fresh messages ---
         batch_size = max_downloads if max_downloads else 200
         total_downloaded = 0
+        downloaded_video_ids: set[int] = set()
 
         while True:
             batch_ids = pending.get_oldest(cursor_key, batch_size)
@@ -398,7 +438,7 @@ async def run_check(
                 f"total pending={pending.count(cursor_key)})"
             )
 
-            downloaded, failed_ids = await download_batch(
+            downloaded, failed_ids, batch_video_ids = await download_batch(
                 candidates, semaphore, client, Path(cfg.download_dir),
                 state_store, cursor_key, cfg, log, source, source_config, history,
                 short_drama_state,
@@ -408,9 +448,18 @@ async def run_check(
             remove_ids = orphaned_ids | (candidate_ids - failed_ids)
             pending.remove_batch(cursor_key, list(remove_ids))
             total_downloaded += downloaded
+            downloaded_video_ids.update(batch_video_ids)
 
             if max_downloads:
                 break  # Capped mode: one batch only
+
+        await extract_ocr_covers_after_batch(
+            cfg,
+            log,
+            client,
+            source,
+            downloaded_video_ids if total_downloaded > 0 else set(),
+        )
 
         remaining = pending.count(cursor_key)
         if remaining:

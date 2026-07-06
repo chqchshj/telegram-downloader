@@ -1,4 +1,6 @@
 """Tests for shared Telegram media helpers."""
+from datetime import datetime
+
 from tests.conftest import MockMessage, MockPhoto
 
 from src.media import (
@@ -70,6 +72,7 @@ def test_photo_uses_stable_date_message_fallback_name():
         id=42,
         document=None,
         photo=MockPhoto(),
+        date=datetime(2026, 7, 5, 12, 0, 0),
         caption="美丽新世界 EP-1 樱花道偶遇",
     )
 

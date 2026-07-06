@@ -110,6 +110,23 @@ class TestConfig:
         config = Config.model_validate(minimal_config_dict)
         assert config.track_downloads is False
 
+    def test_ocr_organizer_default_disabled(self, minimal_config_dict):
+        """OCR organizer should be opt-in."""
+        config = Config.model_validate(minimal_config_dict)
+        assert config.ocr_organizer.enabled is False
+
+    def test_ocr_organizer_config(self, minimal_config_dict, temp_dir):
+        """OCR organizer paths and confidence can be configured."""
+        minimal_config_dict["ocr_organizer"] = {
+            "enabled": True,
+            "output_dir": str(temp_dir / "ocr"),
+            "cover_cache_dir": str(temp_dir / "covers"),
+            "min_confidence": 0.8,
+        }
+        config = Config.model_validate(minimal_config_dict)
+        assert config.ocr_organizer.enabled is True
+        assert config.ocr_organizer.min_confidence == 0.8
+
     def test_max_concurrent_downloads_default(self, minimal_config_dict):
         """Default max_concurrent_downloads should be 1."""
         config = Config.model_validate(minimal_config_dict)
