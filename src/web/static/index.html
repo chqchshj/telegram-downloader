@@ -264,6 +264,38 @@
     .skip-list { display: flex; flex-wrap: wrap; gap: 8px; }
     .skip-list .pill { border-radius: 6px; }
     .next-action { font-size: 18px; font-weight: 650; line-height: 1.45; }
+    .review-panel { grid-column: 1 / -1; }
+    .review-list { display: grid; gap: 10px; }
+    .review-item {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.022);
+      border-radius: 8px;
+      padding: 10px;
+      min-width: 0;
+    }
+    .review-thumb, .review-thumb-empty {
+      width: 72px;
+      aspect-ratio: 4 / 3;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #111214;
+    }
+    .review-thumb { object-fit: cover; display: block; }
+    .review-thumb-empty {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .review-body { display: grid; gap: 6px; min-width: 0; }
+    .review-title { font-weight: 650; color: #f4f4f5; overflow-wrap: anywhere; }
+    .review-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+    .review-meta .pill { border-radius: 6px; }
+    .review-reason, .review-empty { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
     .advanced-panel {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -469,8 +501,15 @@
             <div id="ocrNextAction" class="next-action">未加载</div>
             <p id="ocrAutoHint" class="helper">刷新后显示当前自动整理状态。</p>
           </div>
+          <div id="ocrReviewPanel" class="card stack review-panel" hidden>
+            <div class="section-head">
+              <h2>待复核</h2>
+              <button id="openAdvancedBtn" class="ghost">打开高级工具</button>
+            </div>
+            <div id="ocrReviewList" class="review-list"></div>
+          </div>
         </div>
-        <details class="advanced-panel">
+        <details id="ocrAdvancedPanel" class="advanced-panel">
           <summary>高级工具 / 手动整理</summary>
           <div class="advanced-content">
             <div class="manual-tools">
@@ -644,6 +683,90 @@
         verified_review: "已在复核",
         verified_raw: "已处理",
       }[reason] || reason || "其他";
+    }
+    function reviewReasonLabel(reason) {
+      return {
+        low_confidence: "置信度偏低",
+        missing_episode: "缺少集数",
+        not_drama: "非短剧",
+        model_error: "模型错误",
+        no_title: "缺少标题",
+        missing_cover: "缺少封面",
+        error: "识别失败",
+      }[reason] || reason || "待复核";
+    }
+    function confidenceLabel(value) {
+      const confidence = Number(value);
+      if (!Number.isFinite(confidence)) return null;
+      return `${Math.round(confidence * 100)}%`;
+    }
+    function coverUrl(url) {
+      if (!url || !currentToken) return url || "";
+      return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(currentToken)}`;
+    }
+    function reviewPlaceholder() {
+      const empty = document.createElement("div");
+      empty.className = "review-thumb-empty";
+      empty.textContent = "无图";
+      return empty;
+    }
+    function renderReviewItems(items) {
+      const panel = $("ocrReviewPanel");
+      const list = $("ocrReviewList");
+      panel.hidden = false;
+      list.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "review-empty";
+        empty.textContent = "暂无待复核";
+        list.append(empty);
+        return;
+      }
+      items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "review-item";
+
+        if (item.cover_url) {
+          const img = document.createElement("img");
+          img.className = "review-thumb";
+          img.alt = "";
+          img.loading = "lazy";
+          img.src = coverUrl(item.cover_url);
+          img.addEventListener("error", () => img.replaceWith(reviewPlaceholder()), {once: true});
+          row.append(img);
+        } else {
+          row.append(reviewPlaceholder());
+        }
+
+        const body = document.createElement("div");
+        body.className = "review-body";
+        const title = document.createElement("div");
+        title.className = "review-title";
+        title.textContent = item.title || "未识别标题";
+        body.append(title);
+
+        const meta = document.createElement("div");
+        meta.className = "review-meta";
+        const confidence = confidenceLabel(item.confidence);
+        [
+          item.episode ? `集数 ${item.episode}` : null,
+          confidence ? `置信度 ${confidence}` : null,
+          item.message_id != null ? `消息 ${item.message_id}` : null,
+        ].filter(Boolean).forEach((text) => {
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.textContent = text;
+          meta.append(pill);
+        });
+        body.append(meta);
+
+        const reason = document.createElement("div");
+        reason.className = "review-reason";
+        reason.textContent = reviewReasonLabel(item.review_reason || item.reason || item.status);
+        body.append(reason);
+        row.append(body);
+        list.append(row);
+      });
     }
     function renderSkipReasons(targetId, reasons) {
       const target = $(targetId);
@@ -879,7 +1002,8 @@
       $("ocrNextAction").textContent = dashboard.next_action || "状态未加载";
       $("ocrAutoHint").textContent = !enabled
         ? "在配置页开启后，下载器会按后台周期处理。"
-        : (reviewCount ? "展开高级工具可查看原始待复核数据。" : (dueCount ? "后台会继续处理待处理项目。" : "当前不需要手动操作。"));
+        : (reviewCount ? "下方可快速查看待复核项。" : (dueCount ? "后台会继续处理待处理项目。" : "当前不需要手动操作。"));
+      renderReviewItems(data.review_items || []);
       renderSkipReasons("ocrBackfillSkips", backfill.skip_reasons || {});
       if (!$("outputRoot").value) $("outputRoot").value = data.output_dir || "";
       if (!$("coverRoot").value) $("coverRoot").value = data.cover_cache_dir || "";
@@ -944,6 +1068,10 @@
     $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("logDiagnostics", String(e))));
     $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcrStatus(), loadTasks()]).catch((e) => show("ocrStatus", String(e))));
     $("refreshTasksBtn").addEventListener("click", () => loadTasks().catch((e) => show("ocrStatus", String(e))));
+    $("openAdvancedBtn").addEventListener("click", () => {
+      $("ocrAdvancedPanel").open = true;
+      $("ocrAdvancedPanel").scrollIntoView({block: "start"});
+    });
     $("extractBtn").addEventListener("click", () => withButton($("extractBtn"), async () => {
       const payload = {
         source_index: $("extractSourceIndex").value ? Number($("extractSourceIndex").value) : null,

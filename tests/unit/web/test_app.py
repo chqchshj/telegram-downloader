@@ -12,6 +12,7 @@ from src.web.app import (
     get_logs,
     get_status,
     index,
+    ocr_cover,
     ocr_plan,
     ocr_status,
 )
@@ -183,6 +184,80 @@ async def test_ocr_status_counts_manifests_and_candidates(temp_dir, monkeypatch)
     assert data["auto_dashboard"]["review_count"] == 1
     assert data["auto_dashboard"]["next_action"] == "有 1 条待复核"
     assert data["config"]["llm_api_key"] == "[redacted]"
+
+
+@pytest.mark.asyncio
+async def test_ocr_status_includes_capped_safe_review_items(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    cover_root = session_dir / "ocr_covers"
+    message_dir = cover_root / "35"
+    message_dir.mkdir(parents=True)
+    (message_dir / "video_thumb_1.jpg").write_bytes(b"image")
+    review_rows = [
+        {
+            "message_id": message_id,
+            "title": f"Title {message_id}",
+            "episode": str(message_id),
+            "confidence": 0.51,
+            "review_reason": "low_confidence",
+            "status": "model_ok",
+            "reason": "needs review",
+            "cover_path": "/secret/cover.jpg",
+            "api_key": "secret-token",
+        }
+        for message_id in range(1, 36)
+    ]
+    (cover_root / "ocr_review_queue.json").write_text(
+        json.dumps(review_rows),
+        encoding="utf-8",
+    )
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+
+    data = await ocr_status(_request())
+
+    assert data["ocr_review_queue_count"] == 35
+    assert len(data["review_items"]) == 30
+    assert data["review_items"][0] == {
+        "message_id": 35,
+        "title": "Title 35",
+        "episode": "35",
+        "review_reason": "low_confidence",
+        "reason": "needs review",
+        "status": "model_ok",
+        "confidence": 0.51,
+        "cover_url": "/api/ocr/covers/35/video_thumb_1.jpg",
+    }
+    assert data["review_items"][-1]["message_id"] == 6
+    serialized = json.dumps(data["review_items"], ensure_ascii=False)
+    assert "secret-token" not in serialized
+    assert "cover_path" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_ocr_cover_endpoint_rejects_unsafe_paths_and_non_images(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    cover_dir = session_dir / "ocr_covers" / "99"
+    cover_dir.mkdir(parents=True)
+    image = cover_dir / "video_thumb_1.jpg"
+    image.write_bytes(b"image")
+    (cover_dir / "notes.txt").write_text("not an image", encoding="utf-8")
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+
+    response = await ocr_cover(99, "video_thumb_1.jpg", _request())
+
+    assert response.path == image
+    with pytest.raises(HTTPException) as traversal:
+        await ocr_cover(99, "../secret.jpg", _request())
+    assert traversal.value.status_code == 400
+    with pytest.raises(HTTPException) as non_image:
+        await ocr_cover(99, "notes.txt", _request())
+    assert non_image.value.status_code == 400
 
 
 @pytest.mark.asyncio

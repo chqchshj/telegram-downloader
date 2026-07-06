@@ -10,9 +10,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from src.config.schema import DEFAULT_LOG_FILE
@@ -33,6 +34,8 @@ from src.ocr_organizer import (
 CONFIG_FILE = Path(os.getenv("TDL_CONFIG_FILE", "/app/config.yaml"))
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_LOG_LINES = 1000
+MAX_OCR_REVIEW_ITEMS = 30
+OCR_COVER_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 PLAN_FILES = {
     "plan": "_hardlink_plan.json",
     "skipped": "_skipped.json",
@@ -125,6 +128,170 @@ def _json_item_count(path: Path) -> int:
     if isinstance(data, list):
         return len(data)
     return 0
+
+
+def _safe_text(value: Any, max_length: int = 160) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) > max_length:
+        return f"{text[:max_length - 3]}..."
+    return text
+
+
+def _safe_confidence(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, confidence))
+
+
+def _coerce_review_message_id(value: Any) -> int | None:
+    try:
+        message_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return message_id if message_id >= 0 else None
+
+
+def _load_review_queue_rows(path: Path) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                rows.append(item)
+    elif isinstance(data, dict):
+        for key, item in data.items():
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            row.setdefault("message_id", key)
+            rows.append(row)
+    return rows
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _safe_cover_image_path(cover_dir: Path, message_id: int, filename: str) -> Path:
+    if message_id < 0:
+        raise HTTPException(status_code=404, detail="cover not found")
+    if Path(filename).name != filename:
+        raise HTTPException(status_code=400, detail="invalid cover filename")
+    if Path(filename).suffix.lower() not in OCR_COVER_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="unsupported cover image type")
+
+    cover_root = cover_dir.resolve()
+    message_dir = (cover_dir / str(message_id)).resolve()
+    if not _is_relative_to(message_dir, cover_root):
+        raise HTTPException(status_code=404, detail="cover not found")
+    cover_path = (message_dir / filename).resolve()
+    if not _is_relative_to(cover_path, message_dir):
+        raise HTTPException(status_code=400, detail="invalid cover path")
+    if not cover_path.exists() or not cover_path.is_file():
+        raise HTTPException(status_code=404, detail="cover not found")
+    return cover_path
+
+
+def _cover_filename_from_path(message_dir: Path, value: Any) -> str | None:
+    text = _safe_text(value, 512)
+    if not text:
+        return None
+    candidate = Path(text)
+    if candidate.suffix.lower() not in OCR_COVER_IMAGE_EXTENSIONS:
+        return None
+    if not candidate.is_absolute():
+        candidate = message_dir / candidate
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    if resolved.exists() and resolved.is_file() and _is_relative_to(resolved, message_dir.resolve()):
+        return resolved.name
+    return None
+
+
+def _find_cover_filename(cover_dir: Path, message_id: int, row: dict[str, Any]) -> str | None:
+    message_dir = cover_dir / str(message_id)
+    if not message_dir.exists() or not message_dir.is_dir():
+        return None
+    if not _is_relative_to(message_dir.resolve(), cover_dir.resolve()):
+        return None
+
+    filename = _cover_filename_from_path(message_dir, row.get("cover_path"))
+    if filename:
+        return filename
+
+    manifest_path = message_dir / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        manifest = {}
+    candidates = manifest.get("candidates", []) if isinstance(manifest, dict) else []
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            filename = _cover_filename_from_path(message_dir, candidate.get("path"))
+            if filename:
+                return filename
+
+    images = [
+        item
+        for item in message_dir.iterdir()
+        if item.is_file() and item.suffix.lower() in OCR_COVER_IMAGE_EXTENSIONS
+    ]
+    images.sort(key=lambda item: (0 if item.name.startswith(("video_thumb", "group_photo")) else 1, item.name))
+    return images[0].name if images else None
+
+
+def _review_message_sort_key(row: dict[str, Any]) -> int:
+    message_id = _coerce_review_message_id(row.get("message_id"))
+    return message_id if message_id is not None else -1
+
+
+def _review_items(cover_dir: Path, review_queue: Path, limit: int = MAX_OCR_REVIEW_ITEMS) -> list[dict[str, Any]]:
+    rows = _load_review_queue_rows(review_queue)
+    rows.sort(key=_review_message_sort_key, reverse=True)
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        message_id = _coerce_review_message_id(row.get("message_id"))
+        if message_id is None:
+            continue
+
+        item: dict[str, Any] = {"message_id": message_id}
+        for field in ("title", "episode", "review_reason", "reason", "status"):
+            value = _safe_text(row.get(field))
+            if value is not None:
+                item[field] = value
+        confidence = _safe_confidence(row.get("confidence"))
+        if confidence is not None:
+            item["confidence"] = confidence
+
+        cover_filename = _find_cover_filename(cover_dir, message_id, row)
+        if cover_filename:
+            item["cover_url"] = f"/api/ocr/covers/{message_id}/{quote(cover_filename)}"
+
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return items
 
 
 def _output_file_count(path: Path) -> int:
@@ -542,6 +709,7 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
     accepted_count = _json_item_count(auto_map)
     review_count = _json_item_count(review_queue)
     raw_count = _json_item_count(verify_raw)
+    review_items = _review_items(cover_dir, review_queue)
 
     latest_auto_output = None
     if latest_auto_output_dirs:
@@ -614,6 +782,7 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "ocr_map_auto_count": accepted_count,
         "ocr_review_queue_count": review_count,
         "ocr_verify_raw_count": raw_count,
+        "review_items": review_items,
         "auto_dashboard": {
             "enabled": auto_enabled,
             "llm_verify_enabled": bool(ocr_config.get("llm_verify_enabled")),
@@ -632,6 +801,19 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "latest_auto_output_dirs": latest_auto_output_dirs,
         "recent_hardlink_view_folders": recent_views,
     }
+
+
+@app.get("/api/ocr/covers/{message_id}/{filename}")
+async def ocr_cover(
+    message_id: int,
+    filename: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    _require_auth(request, authorization)
+    config = load_config_document(_config_path())
+    cover_path = _safe_cover_image_path(_cover_cache_dir(config), message_id, filename)
+    return FileResponse(cover_path)
 
 
 @app.post("/api/ocr/extract-covers")
