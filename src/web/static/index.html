@@ -359,6 +359,15 @@
           </label>
         </div>
         <div class="card stack">
+          <h2>OCR 整理目录</h2>
+          <div class="quick-help">下载目录保存原始文件；整理输出目录保存硬链接、NFO 和封面，不会移动或删除原始文件。Docker 部署时请确保这两个容器路径都有宿主机 volume 挂载。</div>
+          <div class="grid">
+            <label>整理输出目录 <input id="ocrOutputDir" type="text" placeholder="/downloads_ocr"></label>
+            <label>封面缓存目录 <input id="ocrCoverCacheDir" type="text" placeholder="/app/.sessions/ocr_covers"></label>
+            <label>最低置信度 <input id="ocrMinConfidence" type="number" min="0" max="1" step="0.01" placeholder="0.8"></label>
+          </div>
+        </div>
+        <div class="card stack">
           <h2>过滤器、守护进程与代理</h2>
           <div class="grid">
             <label>扩展名统计 <input id="extensions" type="text" placeholder=".mp4,.jpg,.jpeg,.png,.webp"></label>
@@ -571,6 +580,10 @@
         const id = source.url || source.chat_id || "";
         return source.name ? `${id}, ${source.name}` : String(id);
       }).join("\n");
+      const ocr = currentConfig.ocr_organizer || {};
+      $("ocrOutputDir").value = ocr.output_dir || "/downloads_ocr";
+      $("ocrCoverCacheDir").value = ocr.cover_cache_dir || "/app/.sessions/ocr_covers";
+      $("ocrMinConfidence").value = ocr.min_confidence ?? 0.8;
     }
     function parseSources() {
       return $("sources").value.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -598,6 +611,12 @@
         extensions: $("extensions").value.split(",").map((v) => v.trim()).filter(Boolean),
         only_after: $("onlyAfter").value.trim() || null,
         only_before: $("onlyBefore").value.trim() || null,
+      };
+      payload.ocr_organizer = {
+        ...(payload.ocr_organizer || {}),
+        output_dir: $("ocrOutputDir").value.trim() || "/downloads_ocr",
+        cover_cache_dir: $("ocrCoverCacheDir").value.trim() || "/app/.sessions/ocr_covers",
+        min_confidence: Number($("ocrMinConfidence").value || 0.8),
       };
       payload.daemon = {...(payload.daemon || {}), enabled: $("daemonEnabled").checked, check_interval: Number($("daemonInterval").value || 300)};
       payload.proxy = {
