@@ -351,6 +351,12 @@ async def post_config(request: Request, authorization: str | None = Header(defau
     }
 
 
+@app.get("/api/health")
+async def health_check():
+    """Unauthenticated lightweight endpoint for Docker healthchecks."""
+    return {"ok": True}
+
+
 @app.get("/api/status")
 async def get_status(request: Request, authorization: str | None = Header(default=None)):
     _require_auth(request, authorization)
