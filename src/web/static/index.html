@@ -463,7 +463,7 @@
       $("healthPill").innerHTML = `<i class="dot ${ok ? "ok" : "warn"}"></i>${data.health_status?.timestamp || "无时间戳"}`;
     }
     async function loadFileSummary() {
-      const data = await api("/api/个文件/summary");
+      const data = await api("/api/files/summary");
       $("sizeMetric").textContent = bytes(data.total_size);
       $("downloadPath").textContent = data.download_dir;
       $("fileCountPill").textContent = `${Object.values(data.counts_by_extension || {}).reduce((a, b) => a + b, 0)} 个文件`;
