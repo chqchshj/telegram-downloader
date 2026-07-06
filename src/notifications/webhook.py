@@ -134,13 +134,21 @@ class GenericWebhook:
                 if attempt < self.max_retries - 1:
                     delay = self.base_delay * (2 ** attempt)
                     self.log.warning(
-                        f"Webhook network error: {e}, "
-                        f"retrying in {delay}s (attempt {attempt + 1}/{self.max_retries})"
+                        "Webhook network error (%s), retrying in %ss "
+                        "(attempt %s/%s)",
+                        e.__class__.__name__,
+                        delay,
+                        attempt + 1,
+                        self.max_retries,
                     )
                     time.sleep(delay)
                     continue
 
-                self.log.error(f"Webhook failed after {self.max_retries} attempts: {e}")
+                self.log.error(
+                    "Webhook failed after %s attempts: %s",
+                    self.max_retries,
+                    e.__class__.__name__,
+                )
                 return False
 
         return False

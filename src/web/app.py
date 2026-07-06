@@ -15,6 +15,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, ValidationError
 
+from src.config.schema import DEFAULT_LOG_FILE
 from src.config.web_config import (
     load_config_document,
     redacted_config,
@@ -25,6 +26,7 @@ from src.ocr_organizer import _load_history_rows, create_hardlink_view
 
 CONFIG_FILE = Path(os.getenv("TDL_CONFIG_FILE", "/app/config.yaml"))
 STATIC_DIR = Path(__file__).parent / "static"
+MAX_LOG_LINES = 1000
 PLAN_FILES = {
     "plan": "_hardlink_plan.json",
     "skipped": "_skipped.json",
@@ -322,17 +324,65 @@ def _read_state(config: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _read_recent_logs(config: dict[str, Any], max_lines: int = 80) -> list[str]:
-    log_file = config.get("log_file")
-    if not log_file:
-        return []
+def _bounded_log_line_count(value: int | str | None, default: int = 200) -> int:
+    try:
+        count = int(value) if value is not None else default
+    except (TypeError, ValueError):
+        count = default
+    return max(1, min(count, MAX_LOG_LINES))
 
-    log_path = Path(log_file)
+
+def _log_path(config: dict[str, Any]) -> Path:
+    configured = os.getenv("TDL_LOG_FILE") or config.get("log_file")
+    return _resolve_config_path(config, configured, DEFAULT_LOG_FILE)
+
+
+def _tail_log_lines(path: Path, max_lines: int) -> list[str]:
+    chunks: list[bytes] = []
+    newline_count = 0
+    chunk_size = 8192
+
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        position = handle.tell()
+        while position > 0 and newline_count <= max_lines:
+            read_size = min(chunk_size, position)
+            position -= read_size
+            handle.seek(position)
+            chunk = handle.read(read_size)
+            chunks.append(chunk)
+            newline_count += chunk.count(b"\n")
+
+    text = b"".join(reversed(chunks)).decode("utf-8", errors="replace")
+    return text.splitlines()[-max_lines:]
+
+
+def _read_log_document(config: dict[str, Any], max_lines: int | str | None = 200) -> dict[str, Any]:
+    line_count = _bounded_log_line_count(max_lines)
+    log_path = _log_path(config)
+    result: dict[str, Any] = {
+        "path": str(log_path),
+        "exists": log_path.exists(),
+        "lines": [],
+    }
     if not log_path.exists():
-        return []
+        return result
+    if not log_path.is_file():
+        result["error"] = "log path is not a file"
+        return result
 
-    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return lines[-max_lines:]
+    try:
+        lines = _tail_log_lines(log_path, line_count)
+    except OSError as exc:
+        result["error"] = str(exc)
+        return result
+
+    result["lines"] = lines[-line_count:]
+    return result
+
+
+def _read_recent_logs(config: dict[str, Any], max_lines: int = 80) -> list[str]:
+    return _read_log_document(config, max_lines)["lines"]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -385,6 +435,17 @@ async def get_status(request: Request, authorization: str | None = Header(defaul
         "state": _read_state(config),
         "recent_logs": _read_recent_logs(config),
     }
+
+
+@app.get("/api/logs")
+async def get_logs(
+    request: Request,
+    lines: int = 200,
+    authorization: str | None = Header(default=None),
+):
+    _require_auth(request, authorization)
+    config = load_config_document(_config_path())
+    return _read_log_document(config, lines)
 
 
 @app.get("/api/files/summary")

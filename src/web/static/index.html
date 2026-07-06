@@ -260,6 +260,15 @@
       font-size: 12px;
       line-height: 1.45;
     }
+    .log-viewer { min-height: 420px; max-height: 62vh; }
+    .compact-json { max-height: 220px; }
+    .inline-control {
+      display: flex;
+      grid-template-columns: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .inline-control input { width: 96px; }
     .section-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
     .stack { display: grid; gap: 12px; }
     @media (max-width: 860px) {
@@ -448,10 +457,21 @@
 
       <section id="logs" class="view">
         <div class="toolbar">
-          <h2>日志与诊断</h2>
-          <button id="statusBtn" class="secondary">刷新诊断</button>
+          <h2>日志</h2>
+          <div class="row">
+            <label class="inline-control">行数 <input id="logLines" type="number" min="1" max="1000" value="200"></label>
+            <button id="refreshLogsBtn" class="secondary">刷新</button>
+          </div>
         </div>
-        <pre id="status"></pre>
+        <div class="card stack">
+          <div class="section-head"><h2>最近日志</h2><span id="logStatePill" class="pill"><i class="dot"></i> 未加载</span></div>
+          <div class="path" id="logPath">-</div>
+          <pre id="logOutput" class="log-viewer"></pre>
+        </div>
+        <div class="card stack">
+          <h2>诊断</h2>
+          <pre id="logDiagnostics" class="compact-json"></pre>
+        </div>
       </section>
     </div>
   </main>
@@ -552,6 +572,9 @@
         document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
         tab.classList.add("active");
         $(tab.dataset.view).classList.add("active");
+        if (tab.dataset.view === "logs") {
+          loadLogs().catch((e) => show("logDiagnostics", String(e)));
+        }
       });
     });
 
@@ -652,14 +675,67 @@
       show("result", data);
       await loadOverview();
     }
-    async function loadStatus() {
-      const data = await api("/api/status");
-      show("status", data);
+    function updateStatusMetrics(data) {
       $("pendingMetric").textContent = data.state?.pending_count ?? 0;
       $("statePath").textContent = data.state?.path || "-";
       const health = healthLabel(data.health_status);
       $("healthMetric").textContent = health.text;
       $("healthPill").innerHTML = `<i class="dot ${health.dot}"></i>${data.health_status?.timestamp || "无时间戳"}`;
+    }
+    function compactDiagnostics(status, logs = null) {
+      const state = status.state || {};
+      const health = status.health_status || {};
+      const cursor = state.cursor || {};
+      const diagnostics = {
+        health: {
+          status: health.status || null,
+          timestamp: health.timestamp || null,
+          exists: Boolean(health.exists),
+          path: health.path || null,
+        },
+        state: {
+          pending_count: state.pending_count ?? 0,
+          cursor_count: Object.keys(cursor).length,
+          exists: Boolean(state.exists),
+          path: state.path || null,
+        },
+      };
+      if (state.error) diagnostics.state.error = state.error;
+      diagnostics.logs = logs
+        ? {
+            path: logs.path || null,
+            exists: Boolean(logs.exists),
+            visible_lines: (logs.lines || []).length,
+            error: logs.error || null,
+          }
+        : {recent_lines: (status.recent_logs || []).length};
+      return diagnostics;
+    }
+    async function loadStatus() {
+      const data = await api("/api/status");
+      updateStatusMetrics(data);
+      show("logDiagnostics", compactDiagnostics(data));
+      return data;
+    }
+    async function loadLogs() {
+      let requested = Number($("logLines").value || 200);
+      if (!Number.isFinite(requested)) requested = 200;
+      requested = Math.max(1, Math.min(Math.floor(requested), 1000));
+      $("logLines").value = requested;
+      const [logs, status] = await Promise.all([
+        api(`/api/logs?lines=${encodeURIComponent(requested)}`),
+        api("/api/status"),
+      ]);
+      updateStatusMetrics(status);
+      $("logPath").textContent = logs.path || "-";
+      const lines = logs.lines || [];
+      $("logOutput").textContent = logs.exists
+        ? (lines.length ? lines.join("\n") : "日志文件为空。")
+        : "日志文件尚不存在。";
+      const dot = logs.error ? "bad" : (logs.exists ? "ok" : "warn");
+      const text = logs.error ? "读取失败" : (logs.exists ? `${lines.length} 行` : "未找到");
+      $("logStatePill").innerHTML = `<i class="dot ${dot}"></i>${text}`;
+      show("logDiagnostics", compactDiagnostics(status, logs));
     }
     async function loadFileSummary() {
       const data = await api("/api/files/summary");
@@ -714,6 +790,7 @@
       $("loginError").classList.remove("active");
       setLocked(false);
       await loadOverview();
+      await loadLogs();
       scheduleTasks();
     }
     async function tryStoredLogin() {
@@ -743,8 +820,8 @@
 
     $("reloadBtn").addEventListener("click", () => loadConfig().catch((e) => show("result", String(e))));
     $("saveBtn").addEventListener("click", () => withButton($("saveBtn"), saveConfig).catch((e) => show("result", String(e))));
-    $("statusBtn").addEventListener("click", () => loadStatus().catch((e) => show("status", String(e))));
-    $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("status", String(e))));
+    $("refreshLogsBtn").addEventListener("click", () => loadLogs().catch((e) => show("logDiagnostics", String(e))));
+    $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("logDiagnostics", String(e))));
     $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcrStatus(), loadTasks()]).catch((e) => show("ocrStatus", String(e))));
     $("refreshTasksBtn").addEventListener("click", () => loadTasks().catch((e) => show("ocrStatus", String(e))));
     $("extractBtn").addEventListener("click", () => withButton($("extractBtn"), async () => {

@@ -24,7 +24,7 @@ from pyrogram import Client
 from pyrogram.types import Message
 
 from src.config import load_config, ConfigError
-from src.config.schema import SourceConfig
+from src.config.schema import DEFAULT_LOG_FILE, SourceConfig
 from src.config.source_parser import parse_sources, validate_source_access
 from src.media import (
     get_media_filename,
@@ -48,11 +48,11 @@ from src.notifications import NotificationManager, DiscordNotifier, GenericWebho
 from src.ocr_organizer import auto_verify_and_apply, extract_cover_candidates
 
 
-def setup_logging(log_file: str, verbosity: str) -> logging.Logger:
+def setup_logging(log_file: str | Path | None, verbosity: str) -> logging.Logger:
     """Configure logging with file and console handlers.
 
     Args:
-        log_file: Path to log file (empty string disables file logging)
+        log_file: Path to log file. Uses the runtime default when not configured.
         verbosity: Logging level (quiet, normal, verbose)
 
     Returns:
@@ -69,16 +69,31 @@ def setup_logging(log_file: str, verbosity: str) -> logging.Logger:
         "%Y-%m-%d %H:%M:%S"
     )
 
-    handlers = [logging.StreamHandler(sys.stdout)]
-    if log_file:
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    file_log_path = Path(log_file).expanduser() if log_file else DEFAULT_LOG_FILE
+    file_logging_error = None
+    try:
+        file_log_path.parent.mkdir(parents=True, exist_ok=True)
         handlers.append(
-            RotatingFileHandler(log_file, maxBytes=2_000_000, backupCount=3)
+            RotatingFileHandler(
+                file_log_path,
+                maxBytes=2_000_000,
+                backupCount=3,
+                encoding="utf-8",
+            )
         )
+    except OSError as exc:
+        file_logging_error = exc
 
     for h in handlers:
         h.setFormatter(fmt)
 
     logging.basicConfig(level=level, handlers=handlers, force=True)
+    logger = logging.getLogger("downloader")
+    if file_logging_error:
+        logger.warning("File logging disabled for %s: %s", file_log_path, file_logging_error)
+    else:
+        logger.info("File logging enabled: %s", file_log_path)
 
     # Quiet noisy libraries (unless verbose mode for debugging)
     lib_level = logging.DEBUG if level == logging.DEBUG else logging.WARNING
@@ -92,7 +107,7 @@ def setup_logging(log_file: str, verbosity: str) -> logging.Logger:
         lg.setLevel(lvl)
         lg.propagate = False
 
-    return logging.getLogger("downloader")
+    return logger
 
 
 async def download_batch(
@@ -531,13 +546,13 @@ async def main():
     else:
         log.info("Short-drama runtime naming disabled; using original Telegram filenames")
 
-    # Log credentials for debugging (mask sensitive parts)
+    # Log authentication diagnostics without writing credentials or API keys.
     log.debug("=" * 50)
     log.debug("AUTHENTICATION DEBUG INFO")
     log.debug("=" * 50)
-    log.debug(f"API ID: {cfg.api_id}")
-    log.debug(f"API Hash: {cfg.api_hash[:8]}...{cfg.api_hash[-4:]}" if cfg.api_hash else "API Hash: None")
-    log.debug(f"Phone Number: {cfg.phone_number}")
+    log.debug("API ID configured: %s", bool(cfg.api_id))
+    log.debug("API Hash configured: %s", bool(cfg.api_hash))
+    log.debug("Phone Number configured: %s", bool(cfg.phone_number))
     log.debug(f"Session Dir: {cfg.session_dir}")
     log.debug(f"Test Mode: {cfg.test_mode}")
     log.debug("=" * 50)

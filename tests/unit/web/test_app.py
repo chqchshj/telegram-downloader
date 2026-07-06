@@ -5,7 +5,16 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from src.web.app import TASKS, apply_map, files_summary, index, ocr_plan, ocr_status
+from src.web.app import (
+    TASKS,
+    apply_map,
+    files_summary,
+    get_logs,
+    get_status,
+    index,
+    ocr_plan,
+    ocr_status,
+)
 
 
 def _write_config(path, download_dir, session_dir):
@@ -85,6 +94,47 @@ async def test_files_summary_reports_counts_and_latest_files(temp_dir, monkeypat
     assert data["counts_by_extension"] == {".jpg": 1, ".mp4": 1}
     assert str(view) in data["ocr_output_folders"]
     assert len(data["latest_files"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_logs_endpoint_uses_runtime_default_when_config_omits_log_file(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+    monkeypatch.delenv("TDL_LOG_FILE", raising=False)
+
+    data = await get_logs(_request())
+
+    assert data["path"] == "/app/runtime/downloader.log"
+    assert isinstance(data["exists"], bool)
+    assert isinstance(data["lines"], list)
+
+
+@pytest.mark.asyncio
+async def test_logs_endpoint_reads_configured_log_file_and_caps_lines(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    log_file = temp_dir / "runtime" / "downloader.log"
+    log_file.parent.mkdir()
+    log_file.write_text("\n".join(f"line {idx}" for idx in range(1105)), encoding="utf-8")
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    with config_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"\nlog_file: {log_file}\n")
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+    monkeypatch.delenv("TDL_LOG_FILE", raising=False)
+
+    data = await get_logs(_request(), lines=5000)
+    status = await get_status(_request())
+
+    assert data["path"] == str(log_file)
+    assert data["exists"] is True
+    assert len(data["lines"]) == 1000
+    assert data["lines"][0] == "line 105"
+    assert data["lines"][-1] == "line 1104"
+    assert status["recent_logs"] == [f"line {idx}" for idx in range(1025, 1105)]
 
 
 @pytest.mark.asyncio

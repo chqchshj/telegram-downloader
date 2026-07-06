@@ -8,6 +8,9 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
+DEFAULT_LOG_FILE = Path("/app/runtime/downloader.log")
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for failed operations."""
     max_retries: int = Field(default=2, ge=0)

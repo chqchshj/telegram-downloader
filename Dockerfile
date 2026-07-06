@@ -44,7 +44,7 @@ RUN chmod +x /entrypoint.sh
 
 # Create non-root user and runtime directories
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /downloads /app/.sessions && \
+    mkdir -p /downloads /app/.sessions /app/runtime && \
     chown -R appuser:appuser /app /downloads
 
 # Environment variables

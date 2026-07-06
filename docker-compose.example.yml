@@ -20,6 +20,7 @@ services:
     volumes:
       - ./downloads:/downloads
       - ./sessions:/app/.sessions
+      - runtime:/app/runtime
       - ./config.yaml:/app/config.yaml
     stdin_open: true
     tty: true
@@ -42,4 +43,8 @@ services:
     volumes:
       - ./downloads:/downloads
       - ./sessions:/app/.sessions
+      - runtime:/app/runtime
       - ./config.yaml:/app/config.yaml
+
+volumes:
+  runtime:

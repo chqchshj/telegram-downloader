@@ -106,5 +106,5 @@ class DiscordNotifier:
             return True
 
         except requests.RequestException as e:
-            self.log.error(f"Discord webhook failed: {e}")
+            self.log.error("Discord webhook failed: %s", e.__class__.__name__)
             return False
