@@ -556,7 +556,7 @@
       fillForm(data.config || {});
       const warnings = [];
       if (!data.token_required) warnings.push("未设置 TDL_WEB_TOKEN。请仅在局域网/可信网络访问此服务。");
-      if (data.env_overrides && data.env_overrides.length) warnings.push(`TDL_ 环境变量会覆盖 YAML 配置：${data.env_overrides.join(", ")}`);
+      // Docker 部署里这些 TDL_ 环境变量是预期覆盖项，不在首页作为告警展示。
       $("warnings").innerHTML = warnings.map((w) => `<div class="notice">${w}</div>`).join("");
       show("result", {config_path: data.config_path});
       return data;
