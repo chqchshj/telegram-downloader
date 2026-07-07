@@ -24,6 +24,9 @@ from src.config.web_config import (
 )
 from src.ocr_organizer import (
     DEFAULT_OCR_BACKFILL_RECENT_LIMIT,
+    OCR_MAP_AUTO_FILE,
+    OCR_REVIEW_QUEUE_FILE,
+    OCR_VERIFY_RAW_FILE,
     _load_history_rows,
     create_hardlink_view,
     load_recent_video_history_rows,
@@ -60,6 +63,12 @@ class ApplyMapRequest(BaseModel):
     source_folder: str | None = None
     min_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     dry_run: bool = False
+
+
+class ReviewApplyRequest(BaseModel):
+    title: str | None = None
+    episode: str | int | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 def _config_path() -> Path:
@@ -178,6 +187,97 @@ def _load_review_queue_rows(path: Path) -> list[dict[str, Any]]:
             row.setdefault("message_id", key)
             rows.append(row)
     return rows
+
+
+def _read_json_or_http(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail=f"Invalid JSON in {path.name}") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read {path.name}: {exc}") from exc
+
+
+def _write_json_atomic(path: Path, data: Any) -> None:
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot write {path.name}: {exc}") from exc
+    finally:
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except OSError:
+            pass
+
+
+def _review_row_message_id(item: Any, fallback: Any = None) -> int | None:
+    if isinstance(item, dict):
+        message_id = _coerce_review_message_id(item.get("message_id"))
+        if message_id is not None:
+            return message_id
+    return _coerce_review_message_id(fallback)
+
+
+def _remove_review_queue_item(data: Any, message_id: int) -> tuple[Any, dict[str, Any] | None]:
+    found: dict[str, Any] | None = None
+
+    if isinstance(data, list):
+        next_rows = []
+        for item in data:
+            if _review_row_message_id(item) == message_id:
+                if found is None and isinstance(item, dict):
+                    found = dict(item)
+                continue
+            next_rows.append(item)
+        return next_rows, found
+
+    if isinstance(data, dict):
+        next_rows = {}
+        for key, item in data.items():
+            if _review_row_message_id(item, key) == message_id:
+                if found is None and isinstance(item, dict):
+                    found = dict(item)
+                    found.setdefault("message_id", key)
+                continue
+            next_rows[key] = item
+        return next_rows, found
+
+    raise HTTPException(status_code=500, detail="OCR review queue must be a JSON list or object")
+
+
+def _ocr_counts(cover_dir: Path) -> dict[str, int]:
+    return {
+        "ocr_map_auto_count": _json_item_count(cover_dir / OCR_MAP_AUTO_FILE),
+        "ocr_review_queue_count": _json_item_count(cover_dir / OCR_REVIEW_QUEUE_FILE),
+        "ocr_verify_raw_count": _json_item_count(cover_dir / OCR_VERIFY_RAW_FILE),
+    }
+
+
+def _message_id_sort_key(message_id: str) -> tuple[int, int | str]:
+    try:
+        return (0, int(message_id))
+    except ValueError:
+        return (1, message_id)
+
+
+def _load_auto_map_for_update(path: Path) -> dict[str, Any]:
+    data = _read_json_or_http(path, {})
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="OCR auto map must be a JSON object")
+    return dict(data)
+
+
+def _clean_required_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -825,6 +925,114 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "latest_auto_output": latest_auto_output,
         "latest_auto_output_dirs": latest_auto_output_dirs,
         "recent_hardlink_view_folders": recent_views,
+    }
+
+
+@app.post("/api/ocr/review/{message_id}/ignore")
+async def ignore_ocr_review(
+    message_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    _require_auth(request, authorization)
+    if message_id < 0:
+        raise HTTPException(status_code=400, detail="message_id must be non-negative")
+
+    config = load_config_document(_config_path())
+    cover_dir = _cover_cache_dir(config)
+    review_queue = cover_dir / OCR_REVIEW_QUEUE_FILE
+    queue_data = _read_json_or_http(review_queue, [])
+    next_queue, removed_row = _remove_review_queue_item(queue_data, message_id)
+    _write_json_atomic(review_queue, next_queue)
+
+    return {
+        "ok": True,
+        "status": "ignored",
+        "message_id": message_id,
+        "removed": removed_row is not None,
+        **_ocr_counts(cover_dir),
+    }
+
+
+@app.post("/api/ocr/review/{message_id}/apply")
+async def apply_ocr_review(
+    message_id: int,
+    payload: ReviewApplyRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    _require_auth(request, authorization)
+    if message_id < 0:
+        raise HTTPException(status_code=400, detail="message_id must be non-negative")
+
+    config = load_config_document(_config_path())
+    cover_dir = _cover_cache_dir(config)
+    output_dir = _reject_output_inside_download(config, _ocr_output_dir(config))
+    state_db = _state_db(config)
+    if not state_db.exists():
+        raise HTTPException(status_code=400, detail=f"state_db does not exist: {state_db}")
+
+    try:
+        rows = _load_history_rows(state_db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read download history: {exc}") from exc
+
+    review_queue = cover_dir / OCR_REVIEW_QUEUE_FILE
+    queue_data = _read_json_or_http(review_queue, [])
+    next_queue, review_row = _remove_review_queue_item(queue_data, message_id)
+    review_row = review_row or {}
+
+    title = _clean_required_text(payload.title)
+    if title is None:
+        title = _clean_required_text(review_row.get("title"))
+    episode = _clean_required_text(payload.episode)
+    if episode is None:
+        episode = _clean_required_text(review_row.get("episode"))
+    if title is None:
+        raise HTTPException(status_code=400, detail="title is required for OCR review apply")
+    if episode is None:
+        raise HTTPException(status_code=400, detail="episode is required for OCR review apply")
+
+    confidence = payload.confidence if payload.confidence is not None else 1.0
+    auto_map_path = cover_dir / OCR_MAP_AUTO_FILE
+    auto_map = _load_auto_map_for_update(auto_map_path)
+    auto_map[str(message_id)] = {
+        "title": title,
+        "episode": episode,
+        "confidence": confidence,
+        "source": "web_review",
+        "status": "manual_applied",
+        "updated_at": _now(),
+    }
+    ordered_auto_map = dict(sorted(auto_map.items(), key=lambda item: _message_id_sort_key(str(item[0]))))
+    _write_json_atomic(auto_map_path, ordered_auto_map)
+
+    try:
+        apply_result = create_hardlink_view(
+            rows,
+            ordered_auto_map,
+            cover_dir,
+            _download_dir(config),
+            output_dir,
+            None,
+            0.0,
+            False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"OCR review apply failed: {exc}") from exc
+
+    _write_json_atomic(review_queue, next_queue)
+
+    return {
+        "ok": True,
+        "status": "applied",
+        "message_id": message_id,
+        "review_removed": bool(review_row),
+        "apply": {"output_root": str(output_dir), **apply_result},
+        "planned_count": apply_result.get("planned", 0),
+        **_ocr_counts(cover_dir),
     }
 
 

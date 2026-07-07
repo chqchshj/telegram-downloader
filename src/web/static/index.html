@@ -128,7 +128,7 @@
     }
     button.secondary { background: var(--panel-2); border-color: var(--line); color: #f4f4f5; }
     button.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
-    button:disabled { opacity: .55; cursor: wait; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
     .check { display: flex; align-items: center; gap: 8px; color: #d4d4d8; }
     .check input { width: auto; }
     .pill {
@@ -296,6 +296,18 @@
     .review-meta { display: flex; flex-wrap: wrap; gap: 6px; }
     .review-meta .pill { border-radius: 6px; }
     .review-reason, .review-empty { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .review-actions button { min-height: 32px; padding: 7px 10px; font-size: 12px; }
+    .review-form {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) minmax(90px, 130px) auto;
+      gap: 8px;
+      align-items: end;
+      margin-top: 4px;
+    }
+    .review-form[hidden] { display: none; }
+    .review-form input { padding: 8px 9px; }
+    .review-form .row { align-items: end; }
     .advanced-panel {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -344,6 +356,7 @@
       main, .wide-grid, .ocr-dashboard, .manual-tools, .manual-secondary { grid-template-columns: 1fr; }
       .ocr-dashboard .card:first-child { grid-row: auto; }
       .detail-row { grid-template-columns: 1fr; gap: 4px; }
+      .review-form { grid-template-columns: 1fr; }
       nav { position: static; display: grid; grid-template-columns: repeat(2, 1fr); }
     }
   </style>
@@ -710,6 +723,20 @@
       empty.textContent = "无图";
       return empty;
     }
+    function hasReviewValue(value) {
+      return value != null && String(value).trim() !== "";
+    }
+    async function runReviewAction(button, item, action, payload = {}) {
+      await withButton(button, async () => {
+        const data = await api(`/api/ocr/review/${encodeURIComponent(item.message_id)}/${action}`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+        const status = await loadOcrStatus();
+        show("ocrStatus", {action_result: data, status});
+      });
+    }
     function renderReviewItems(items) {
       const panel = $("ocrReviewPanel");
       const list = $("ocrReviewList");
@@ -749,7 +776,7 @@
         meta.className = "review-meta";
         const confidence = confidenceLabel(item.confidence);
         [
-          item.episode ? `集数 ${item.episode}` : null,
+          hasReviewValue(item.episode) ? `集数 ${item.episode}` : null,
           confidence ? `置信度 ${confidence}` : null,
           item.message_id != null ? `消息 ${item.message_id}` : null,
         ].filter(Boolean).forEach((text) => {
@@ -764,6 +791,81 @@
         reason.className = "review-reason";
         reason.textContent = reviewReasonLabel(item.review_reason || item.reason || item.status);
         body.append(reason);
+
+        const actions = document.createElement("div");
+        actions.className = "review-actions";
+        const canAccept = hasReviewValue(item.title) && hasReviewValue(item.episode);
+
+        const accept = document.createElement("button");
+        accept.type = "button";
+        accept.textContent = "接受并整理";
+        accept.disabled = !canAccept;
+        accept.title = canAccept ? "按当前识别结果整理" : "缺少标题或集数，需手动填写";
+        if (canAccept) {
+          accept.addEventListener("click", () => runReviewAction(accept, item, "apply").catch((e) => show("ocrStatus", String(e))));
+        }
+        actions.append(accept);
+
+        const manual = document.createElement("button");
+        manual.type = "button";
+        manual.className = "secondary";
+        manual.textContent = "手动填写并整理";
+        actions.append(manual);
+
+        const ignore = document.createElement("button");
+        ignore.type = "button";
+        ignore.className = "ghost";
+        ignore.textContent = "忽略";
+        ignore.addEventListener("click", () => runReviewAction(ignore, item, "ignore").catch((e) => show("ocrStatus", String(e))));
+        actions.append(ignore);
+        body.append(actions);
+
+        const form = document.createElement("form");
+        form.className = "review-form";
+        form.hidden = true;
+        const titleLabel = document.createElement("label");
+        titleLabel.textContent = "标题";
+        const titleInput = document.createElement("input");
+        titleInput.type = "text";
+        titleInput.autocomplete = "off";
+        titleInput.value = item.title == null ? "" : String(item.title);
+        titleLabel.append(titleInput);
+
+        const episodeLabel = document.createElement("label");
+        episodeLabel.textContent = "集数";
+        const episodeInput = document.createElement("input");
+        episodeInput.type = "text";
+        episodeInput.autocomplete = "off";
+        episodeInput.value = item.episode == null ? "" : String(item.episode);
+        episodeLabel.append(episodeInput);
+
+        const formActions = document.createElement("div");
+        formActions.className = "row";
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.textContent = "整理";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "ghost";
+        cancel.textContent = "取消";
+        cancel.addEventListener("click", () => { form.hidden = true; });
+        formActions.append(submit, cancel);
+        form.append(titleLabel, episodeLabel, formActions);
+        manual.addEventListener("click", () => {
+          form.hidden = !form.hidden;
+          if (!form.hidden) titleInput.focus();
+        });
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const titleValue = titleInput.value.trim();
+          const episodeValue = episodeInput.value.trim();
+          if (!titleValue || !episodeValue) {
+            show("ocrStatus", {message_id: item.message_id, error: "请填写标题和集数。"});
+            return;
+          }
+          runReviewAction(submit, item, "apply", {title: titleValue, episode: episodeValue}).catch((e) => show("ocrStatus", String(e)));
+        });
+        body.append(form);
         row.append(body);
         list.append(row);
       });

@@ -6,11 +6,14 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from src.web.app import (
+    ReviewApplyRequest,
     TASKS,
+    apply_ocr_review,
     apply_map,
     files_summary,
     get_logs,
     get_status,
+    ignore_ocr_review,
     index,
     ocr_cover,
     ocr_plan,
@@ -54,6 +57,35 @@ def _state_db(path):
                 downloaded_at TEXT
             )
             """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insert_history(path, *, message_id, file_name, file_size):
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO download_history (
+                file_unique_id,
+                file_name,
+                file_size,
+                source_key,
+                message_id,
+                downloaded_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"file-{message_id}",
+                file_name,
+                file_size,
+                "source",
+                message_id,
+                "2026-07-07T00:00:00+00:00",
+            ),
         )
         conn.commit()
     finally:
@@ -295,6 +327,114 @@ async def test_ocr_cover_endpoint_rejects_unsafe_paths_and_non_images(temp_dir, 
     with pytest.raises(HTTPException) as non_image:
         await ocr_cover(99, "notes.txt", _request())
     assert non_image.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_ignore_ocr_review_removes_queue_item_and_preserves_raw(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    cover_root = session_dir / "ocr_covers"
+    cover_root.mkdir(parents=True)
+    review_path = cover_root / "ocr_review_queue.json"
+    raw_path = cover_root / "ocr_verify_raw.json"
+    review_path.write_text(
+        json.dumps([
+            {"message_id": 1784, "title": "", "review_reason": "missing_cover"},
+            {"message_id": 1785, "title": "Keep", "episode": "1"},
+        ]),
+        encoding="utf-8",
+    )
+    raw_rows = [{"message_id": 1784, "cover_path": "/internal/cover.jpg", "status": "missing_cover"}]
+    raw_path.write_text(json.dumps(raw_rows), encoding="utf-8")
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+
+    data = await ignore_ocr_review(1784, _request())
+
+    assert data["status"] == "ignored"
+    assert data["removed"] is True
+    assert data["ocr_review_queue_count"] == 1
+    assert data["ocr_verify_raw_count"] == 1
+    assert json.loads(review_path.read_text(encoding="utf-8")) == [
+        {"message_id": 1785, "title": "Keep", "episode": "1"}
+    ]
+    assert json.loads(raw_path.read_text(encoding="utf-8")) == raw_rows
+
+
+@pytest.mark.asyncio
+async def test_apply_ocr_review_manual_values_updates_map_removes_review_and_organizes(temp_dir, monkeypatch):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    cover_root = session_dir / "ocr_covers"
+    output_dir = download_dir.parent / "downloads_ocr"
+    download_dir.mkdir()
+    cover_root.mkdir(parents=True)
+    source = download_dir / "source.mp4"
+    source.write_bytes(b"video bytes")
+    state_db = session_dir / "state.db"
+    _state_db(state_db)
+    _insert_history(state_db, message_id=1784, file_name="source.mp4", file_size=source.stat().st_size)
+    review_path = cover_root / "ocr_review_queue.json"
+    review_path.write_text(
+        json.dumps([{"message_id": 1784, "status": "missing_cover", "review_reason": "missing_cover"}]),
+        encoding="utf-8",
+    )
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+
+    data = await apply_ocr_review(
+        1784,
+        ReviewApplyRequest(title="ManualDrama", episode="12"),
+        _request(),
+    )
+
+    auto_map = json.loads((cover_root / "ocr_map_auto.json").read_text(encoding="utf-8"))
+    assert auto_map["1784"]["title"] == "ManualDrama"
+    assert auto_map["1784"]["episode"] == "12"
+    assert auto_map["1784"]["confidence"] == 1.0
+    assert auto_map["1784"]["source"] == "web_review"
+    assert "cover_path" not in auto_map["1784"]
+    assert json.loads(review_path.read_text(encoding="utf-8")) == []
+    organized = output_dir / "ManualDrama" / "ManualDrama_EP12_1784.mp4"
+    assert organized.exists()
+    assert organized.stat().st_size == source.stat().st_size
+    assert data["status"] == "applied"
+    assert data["planned_count"] == 1
+    assert data["apply"]["planned"] == 1
+    assert data["apply"]["output_root"] == str(output_dir)
+    assert data["ocr_map_auto_count"] == 1
+    assert data["ocr_review_queue_count"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "detail"),
+    [
+        (ReviewApplyRequest(episode="1"), "title"),
+        (ReviewApplyRequest(title="ManualDrama"), "episode"),
+    ],
+)
+async def test_apply_ocr_review_rejects_missing_title_or_episode(temp_dir, monkeypatch, payload, detail):
+    download_dir = temp_dir / "downloads"
+    session_dir = temp_dir / "sessions"
+    cover_root = session_dir / "ocr_covers"
+    cover_root.mkdir(parents=True)
+    _state_db(session_dir / "state.db")
+    review_path = cover_root / "ocr_review_queue.json"
+    review_path.write_text(json.dumps([{"message_id": 1784}]), encoding="utf-8")
+    config_path = temp_dir / "config.yaml"
+    _write_config(config_path, download_dir, session_dir)
+    monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
+
+    with pytest.raises(HTTPException) as exc:
+        await apply_ocr_review(1784, payload, _request())
+
+    assert exc.value.status_code == 400
+    assert detail in exc.value.detail
+    assert json.loads(review_path.read_text(encoding="utf-8")) == [{"message_id": 1784}]
+    assert not (cover_root / "ocr_map_auto.json").exists()
 
 
 @pytest.mark.asyncio
