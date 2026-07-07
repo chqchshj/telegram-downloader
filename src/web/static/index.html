@@ -296,6 +296,19 @@
     .review-meta { display: flex; flex-wrap: wrap; gap: 6px; }
     .review-meta .pill { border-radius: 6px; }
     .review-reason, .review-empty { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .review-source {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255,255,255,.018);
+    }
+    .review-source strong { color: #f4f4f5; font-weight: 650; }
     .review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
     .review-actions button { min-height: 32px; padding: 7px 10px; font-size: 12px; }
     .review-form {
@@ -647,6 +660,15 @@
       td.textContent = text == null ? "" : String(text);
       return td;
     }
+    function escapeHtml(value) {
+      return String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[ch]));
+    }
     async function api(path, options = {}) {
       const response = await fetch(path, {...options, headers: {...headers(), ...(options.headers || {})}});
       const text = await response.text();
@@ -791,6 +813,23 @@
         reason.className = "review-reason";
         reason.textContent = reviewReasonLabel(item.review_reason || item.reason || item.status);
         body.append(reason);
+
+        const source = document.createElement("div");
+        source.className = "review-source";
+        const fileName = item.source_file_name || "未找到下载记录";
+        const fileLine = document.createElement("div");
+        fileLine.innerHTML = `<strong>原始文件：</strong>${escapeHtml(fileName)}`;
+        source.append(fileLine);
+        const sourceMeta = [
+          item.source_file_size != null ? `大小 ${bytes(item.source_file_size)}` : null,
+          item.source_downloaded_at ? `下载 ${shortDate(item.source_downloaded_at)}` : null,
+        ].filter(Boolean).join(" · ");
+        if (sourceMeta) {
+          const metaLine = document.createElement("div");
+          metaLine.textContent = sourceMeta;
+          source.append(metaLine);
+        }
+        body.append(source);
 
         const actions = document.createElement("div");
         actions.className = "review-actions";

@@ -365,9 +365,19 @@ def _review_message_sort_key(row: dict[str, Any]) -> int:
     return message_id if message_id is not None else -1
 
 
-def _review_items(cover_dir: Path, review_queue: Path, limit: int = MAX_OCR_REVIEW_ITEMS) -> list[dict[str, Any]]:
+def _review_items(
+    cover_dir: Path,
+    review_queue: Path,
+    history_rows: list[Any] | None = None,
+    limit: int = MAX_OCR_REVIEW_ITEMS,
+) -> list[dict[str, Any]]:
     rows = _load_review_queue_rows(review_queue)
     rows.sort(key=_review_message_sort_key, reverse=True)
+    history_by_message_id = {
+        int(row.message_id): row
+        for row in (history_rows or [])
+        if getattr(row, "message_id", None) is not None
+    }
 
     items: list[dict[str, Any]] = []
     for row in rows:
@@ -383,6 +393,18 @@ def _review_items(cover_dir: Path, review_queue: Path, limit: int = MAX_OCR_REVI
         confidence = _safe_confidence(row.get("confidence"))
         if confidence is not None:
             item["confidence"] = confidence
+
+        history = history_by_message_id.get(message_id)
+        if history:
+            file_name = _safe_text(getattr(history, "file_name", None), 260)
+            if file_name:
+                item["source_file_name"] = file_name
+            file_size = getattr(history, "file_size", None)
+            if isinstance(file_size, int) and file_size >= 0:
+                item["source_file_size"] = file_size
+            downloaded_at = _safe_text(getattr(history, "downloaded_at", None), 80)
+            if downloaded_at:
+                item["source_downloaded_at"] = downloaded_at
 
         cover_filename = _find_cover_filename(cover_dir, message_id, row)
         if cover_filename:
@@ -832,7 +854,11 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
     accepted_count = _json_item_count(auto_map)
     review_count = _json_item_count(review_queue)
     raw_count = _json_item_count(verify_raw)
-    review_items = _review_items(cover_dir, review_queue)
+    try:
+        history_rows = _load_history_rows(state_db) if state_db.exists() else []
+    except Exception:
+        history_rows = []
+    review_items = _review_items(cover_dir, review_queue, history_rows)
 
     direct_output = None
     direct_plan = output_dir / PLAN_FILES["plan"]

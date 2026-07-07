@@ -283,6 +283,9 @@ async def test_ocr_status_includes_capped_safe_review_items(temp_dir, monkeypatc
     )
     config_path = temp_dir / "config.yaml"
     _write_config(config_path, download_dir, session_dir)
+    state_db = session_dir / "state.db"
+    _state_db(state_db)
+    _insert_history(state_db, message_id=35, file_name="raw-title-35.mp4", file_size=123456789)
     monkeypatch.setenv("TDL_CONFIG_FILE", str(config_path))
 
     data = await ocr_status(_request())
@@ -297,6 +300,9 @@ async def test_ocr_status_includes_capped_safe_review_items(temp_dir, monkeypatc
         "reason": "needs review",
         "status": "model_ok",
         "confidence": 0.51,
+        "source_file_name": "raw-title-35.mp4",
+        "source_file_size": 123456789,
+        "source_downloaded_at": "2026-07-07T00:00:00+00:00",
         "cover_url": "/api/ocr/covers/35/video_thumb_1.jpg",
     }
     assert data["review_items"][-1]["message_id"] == 6
