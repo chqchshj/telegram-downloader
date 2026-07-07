@@ -29,7 +29,7 @@ def test_build_ocr_filename_sanitizes_components():
     folder, filename = build_ocr_filename("美丽/新世界", "EP-1", 1619, ".mp4")
 
     assert folder == "美丽_新世界"
-    assert filename == "美丽_新世界_EP01_1619.mp4"
+    assert filename == "美丽_新世界_EP01.mp4"
 
 
 def test_resolve_downloaded_media_path_uses_sanitizer(temp_dir):
@@ -221,7 +221,7 @@ def test_create_hardlink_view_creates_separate_links_and_preserves_source(temp_d
         min_confidence=0.8,
     )
 
-    target = output_root / "美丽新世界" / "美丽新世界_EP01_1619.mp4"
+    target = output_root / "美丽新世界" / "美丽新世界_EP01.mp4"
     assert result["planned"] == 1
     assert target.exists()
     assert source.exists()
@@ -281,7 +281,7 @@ def test_create_hardlink_view_adds_suffix_for_target_collisions(temp_dir):
     (download_root / "one.mp4").write_bytes(b"one")
     existing_dir = output_root / "Same"
     existing_dir.mkdir(parents=True)
-    (existing_dir / "Same_EP01_1.mp4").write_bytes(b"existing")
+    (existing_dir / "Same_EP01.mp4").write_bytes(b"existing")
 
     result = create_hardlink_view(
         [
@@ -298,7 +298,7 @@ def test_create_hardlink_view_adds_suffix_for_target_collisions(temp_dir):
 
     plan = (output_root / "_hardlink_plan.json").read_text(encoding="utf-8")
     assert result["planned"] == 1
-    assert "Same_EP01_1_2.mp4" in plan
+    assert "Same_EP01_2.mp4" in plan
 
 
 def test_create_hardlink_view_rejects_output_inside_download_root(temp_dir):
@@ -379,7 +379,7 @@ def test_auto_verify_and_apply_writes_directly_to_configured_output_dir(temp_dir
 
     assert result["apply"]["output_root"] == str(output_dir)
     assert result["apply"]["plan_path"] == str(output_dir / "_hardlink_plan.json")
-    assert (output_dir / "Direct_Root" / "Direct_Root_EP01_42.mp4").exists()
+    assert (output_dir / "Direct_Root" / "Direct_Root_EP01.mp4").exists()
     assert not list(output_dir.glob("auto_*"))
 
 

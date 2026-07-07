@@ -266,6 +266,9 @@
     .next-action { font-size: 18px; font-weight: 650; line-height: 1.45; }
     .review-panel { grid-column: 1 / -1; }
     .review-list { display: grid; gap: 10px; }
+    .correction-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(90px, 140px) minmax(90px, 140px) auto; gap: 8px; align-items: end; }
+    .correction-toolbar input, .correction-toolbar select { padding: 8px 9px; }
+    .correction-history { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
     .review-item {
       display: grid;
       grid-template-columns: 72px minmax(0, 1fr);
@@ -534,6 +537,20 @@
             </div>
             <div id="ocrReviewList" class="review-list"></div>
           </div>
+          <div id="ocrCorrectionPanel" class="card stack review-panel">
+            <div class="section-head">
+              <h2>已整理条目 / 修正识别结果</h2>
+              <span id="ocrCorrectionCount" class="pill">0 条</span>
+            </div>
+            <div class="correction-toolbar">
+              <label>查找条目 <select id="ocrCorrectionSelect"></select></label>
+              <label>修正标题 <input id="ocrCorrectionTitle" type="text" autocomplete="off"></label>
+              <label>修正集数 <input id="ocrCorrectionEpisode" type="text" autocomplete="off"></label>
+              <button id="ocrCorrectionApplyBtn" type="button">应用修正</button>
+            </div>
+            <div id="ocrCorrectionDetail" class="review-source">暂无已整理条目</div>
+            <div id="ocrCorrectionHistory" class="correction-history"></div>
+          </div>
         </div>
         <details id="ocrAdvancedPanel" class="advanced-panel">
           <summary>高级工具 / 手动整理</summary>
@@ -610,6 +627,7 @@
     const $ = (id) => document.getElementById(id);
     let currentConfig = {};
     let taskTimer = null;
+    let ocrCorrectableItems = [];
     let currentToken = sessionStorage.getItem("tdlWebToken") || localStorage.getItem("tdlWebToken") || "";
     let tokenRequired = true;
 
@@ -909,6 +927,90 @@
         list.append(row);
       });
     }
+    function correctionOptionLabel(item) {
+      return [
+        item.message_id != null ? `消息 ${item.message_id}` : null,
+        item.source_file_name || null,
+        item.title ? `${item.title}${item.episode ? ` EP${item.episode}` : ""}` : null,
+      ].filter(Boolean).join(" · ");
+    }
+    function selectedCorrectionItem() {
+      const id = Number($("ocrCorrectionSelect").value);
+      return ocrCorrectableItems.find((item) => Number(item.message_id) === id) || null;
+    }
+    function renderCorrectionDetail(item) {
+      const detail = $("ocrCorrectionDetail");
+      if (!item) {
+        detail.textContent = "暂无已整理条目";
+        return;
+      }
+      const confidence = confidenceLabel(item.confidence);
+      detail.innerHTML = [
+        `<div><strong>当前识别：</strong>${escapeHtml(item.title || "未识别标题")}${item.episode ? ` EP${escapeHtml(item.episode)}` : ""}</div>`,
+        `<div><strong>消息：</strong>${escapeHtml(item.message_id)}${confidence ? ` · 置信度 ${escapeHtml(confidence)}` : ""}</div>`,
+        item.source_file_name ? `<div><strong>原始文件：</strong>${escapeHtml(item.source_file_name)}</div>` : "",
+        item.organized_path ? `<div><strong>整理位置：</strong>${escapeHtml(item.organized_path)}</div>` : "",
+      ].filter(Boolean).join("");
+    }
+    function renderCorrectionHistory(rows) {
+      const target = $("ocrCorrectionHistory");
+      target.innerHTML = "";
+      (rows || []).slice(0, 3).forEach((row) => {
+        const item = document.createElement("div");
+        item.textContent = `已修正 消息 ${row.message_id}: ${row.previous_title || "-"} EP${row.previous_episode || "-"} -> ${row.title || "-"} EP${row.episode || "-"}`;
+        target.append(item);
+      });
+    }
+    function renderCorrectionItems(items, history) {
+      ocrCorrectableItems = items || [];
+      const select = $("ocrCorrectionSelect");
+      const previous = select.value;
+      select.innerHTML = "";
+      $("ocrCorrectionCount").textContent = `${ocrCorrectableItems.length} 条`;
+      if (!ocrCorrectableItems.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "暂无已整理条目";
+        select.append(option);
+        $("ocrCorrectionTitle").value = "";
+        $("ocrCorrectionEpisode").value = "";
+        renderCorrectionDetail(null);
+        renderCorrectionHistory(history || []);
+        return;
+      }
+      ocrCorrectableItems.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.message_id;
+        option.textContent = correctionOptionLabel(item);
+        select.append(option);
+      });
+      if (previous && ocrCorrectableItems.some((item) => String(item.message_id) === previous)) {
+        select.value = previous;
+      }
+      const item = selectedCorrectionItem();
+      $("ocrCorrectionTitle").value = item?.title || "";
+      $("ocrCorrectionEpisode").value = item?.episode || "";
+      renderCorrectionDetail(item);
+      renderCorrectionHistory(history || []);
+    }
+    async function applyOcrCorrection(button) {
+      const item = selectedCorrectionItem();
+      const title = $("ocrCorrectionTitle").value.trim();
+      const episode = $("ocrCorrectionEpisode").value.trim();
+      if (!item || !title || !episode) {
+        show("ocrStatus", {error: "请选择条目并填写标题和集数。"});
+        return;
+      }
+      await withButton(button, async () => {
+        const data = await api(`/api/ocr/corrections/${encodeURIComponent(item.message_id)}/apply`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({title, episode}),
+        });
+        const status = await loadOcrStatus();
+        show("ocrStatus", {correction_result: data, status});
+      });
+    }
     function renderSkipReasons(targetId, reasons) {
       const target = $(targetId);
       target.innerHTML = "";
@@ -1145,6 +1247,7 @@
         ? "在配置页开启后，下载器会按后台周期处理。"
         : (reviewCount ? "下方可快速查看待复核项。" : (dueCount ? "后台会继续处理待处理项目。" : "当前不需要手动操作。"));
       renderReviewItems(data.review_items || []);
+      renderCorrectionItems(data.correctable_items || [], data.correction_history || []);
       renderSkipReasons("ocrBackfillSkips", backfill.skip_reasons || {});
       if (!$("outputRoot").value) $("outputRoot").value = data.output_dir || "";
       if (!$("coverRoot").value) $("coverRoot").value = data.cover_cache_dir || "";

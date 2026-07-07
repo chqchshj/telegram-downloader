@@ -102,7 +102,6 @@ def build_ocr_filename(
     parts = [safe_title]
     if episode_suffix:
         parts.append(episode_suffix)
-    parts.append(str(message_id))
     filename = sanitize_filename("_".join(parts) + ext)
     return safe_title, filename
 

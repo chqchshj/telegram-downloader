@@ -38,6 +38,8 @@ CONFIG_FILE = Path(os.getenv("TDL_CONFIG_FILE", "/app/config.yaml"))
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_LOG_LINES = 1000
 MAX_OCR_REVIEW_ITEMS = 30
+MAX_OCR_CORRECTABLE_ITEMS = 80
+OCR_CORRECTIONS_FILE = "ocr_corrections.json"
 OCR_COVER_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 PLAN_FILES = {
     "plan": "_hardlink_plan.json",
@@ -68,6 +70,12 @@ class ApplyMapRequest(BaseModel):
 class ReviewApplyRequest(BaseModel):
     title: str | None = None
     episode: str | int | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class CorrectionApplyRequest(BaseModel):
+    title: str
+    episode: str | int
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
@@ -414,6 +422,144 @@ def _review_items(
         if len(items) >= limit:
             break
     return items
+
+
+def _history_rows_by_message_id(history_rows: list[Any]) -> dict[int, Any]:
+    return {
+        int(row.message_id): row
+        for row in history_rows
+        if getattr(row, "message_id", None) is not None
+    }
+
+
+def _correction_history_path(cover_dir: Path) -> Path:
+    return cover_dir / OCR_CORRECTIONS_FILE
+
+
+def _load_correction_history(cover_dir: Path, limit: int = 20) -> list[dict[str, Any]]:
+    data = _read_json_or_http(_correction_history_path(cover_dir), [])
+    rows = data if isinstance(data, list) else []
+    safe_rows = [dict(row) for row in rows if isinstance(row, dict)]
+    return safe_rows[:limit]
+
+
+def _organized_target_for_message(output_dir: Path, message_id: int) -> str | None:
+    if not output_dir.exists() or not output_dir.is_dir():
+        return None
+    suffix = f"_{message_id}"
+    for item in output_dir.rglob("*"):
+        if not item.is_file() or item.name in PLAN_FILES.values():
+            continue
+        if item.stem.endswith(suffix):
+            try:
+                return str(item.relative_to(output_dir))
+            except ValueError:
+                return item.name
+    return None
+
+
+def _remove_existing_outputs_for_message(output_dir: Path, message_id: int) -> list[str]:
+    """Remove prior organized files for a message before applying a correction."""
+    plan_path = output_dir / PLAN_FILES["plan"]
+    try:
+        plan_rows = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(plan_rows, list):
+        return []
+
+    removed: list[str] = []
+    output_root = output_dir.resolve()
+    for row in plan_rows:
+        if not isinstance(row, dict) or _coerce_review_message_id(row.get("message_id")) != message_id:
+            continue
+        for raw_path in (row.get("target"), row.get("cover")):
+            if not raw_path:
+                continue
+            candidate = Path(str(raw_path)).resolve()
+            if not _is_relative_to(candidate, output_root):
+                continue
+            for companion in (candidate, candidate.with_suffix(".nfo")):
+                if companion.exists() and companion.is_file():
+                    companion.unlink()
+                    removed.append(str(companion.relative_to(output_root)))
+            parent = candidate.parent
+            try:
+                remaining = [item for item in parent.iterdir() if item.name != "tvshow.nfo"]
+                if not remaining:
+                    tvshow = parent / "tvshow.nfo"
+                    if tvshow.exists():
+                        tvshow.unlink()
+                        removed.append(str(tvshow.relative_to(output_root)))
+                    parent.rmdir()
+                    removed.append(str(parent.relative_to(output_root)))
+            except OSError:
+                pass
+    return removed
+
+
+def _correctable_items(
+    cover_dir: Path,
+    output_dir: Path,
+    history_rows: list[Any],
+    limit: int = MAX_OCR_CORRECTABLE_ITEMS,
+) -> list[dict[str, Any]]:
+    auto_map = _read_json_or_http(cover_dir / OCR_MAP_AUTO_FILE, {})
+    if not isinstance(auto_map, dict):
+        raise HTTPException(status_code=500, detail="OCR auto map must be a JSON object")
+    history_by_message_id = _history_rows_by_message_id(history_rows)
+
+    items: list[dict[str, Any]] = []
+    for raw_message_id, entry in sorted(auto_map.items(), key=lambda item: _message_id_sort_key(str(item[0])), reverse=True):
+        message_id = _coerce_review_message_id(raw_message_id)
+        if message_id is None or not isinstance(entry, dict):
+            continue
+
+        item: dict[str, Any] = {"message_id": message_id}
+        for source_field, target_field in (
+            ("title", "title"),
+            ("episode", "episode"),
+            ("source", "source"),
+            ("status", "status"),
+            ("updated_at", "updated_at"),
+            ("corrected_at", "corrected_at"),
+        ):
+            value = _safe_text(entry.get(source_field))
+            if value is not None:
+                item[target_field] = value
+        confidence = _safe_confidence(entry.get("confidence"))
+        if confidence is not None:
+            item["confidence"] = confidence
+
+        history = history_by_message_id.get(message_id)
+        if history:
+            file_name = _safe_text(getattr(history, "file_name", None), 260)
+            if file_name:
+                item["source_file_name"] = file_name
+            file_size = getattr(history, "file_size", None)
+            if isinstance(file_size, int) and file_size >= 0:
+                item["source_file_size"] = file_size
+            downloaded_at = _safe_text(getattr(history, "downloaded_at", None), 80)
+            if downloaded_at:
+                item["source_downloaded_at"] = downloaded_at
+
+        target = _organized_target_for_message(output_dir, message_id)
+        if target:
+            item["organized_path"] = target
+
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _append_correction_history(cover_dir: Path, row: dict[str, Any], keep: int = 200) -> None:
+    history_path = _correction_history_path(cover_dir)
+    data = _read_json_or_http(history_path, [])
+    rows = data if isinstance(data, list) else []
+    next_rows = [dict(item) for item in rows if isinstance(item, dict)]
+    next_rows.insert(0, row)
+    _write_json_atomic(history_path, next_rows[:keep])
 
 
 def _output_file_count(path: Path, *, exclude_legacy_auto_children: bool = False) -> int:
@@ -859,6 +1005,8 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
     except Exception:
         history_rows = []
     review_items = _review_items(cover_dir, review_queue, history_rows)
+    correctable_items = _correctable_items(cover_dir, output_dir, history_rows, limit=20)
+    correction_history = _load_correction_history(cover_dir, limit=10)
 
     direct_output = None
     direct_plan = output_dir / PLAN_FILES["plan"]
@@ -934,6 +1082,8 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "ocr_review_queue_count": review_count,
         "ocr_verify_raw_count": raw_count,
         "review_items": review_items,
+        "correctable_items": correctable_items,
+        "correction_history": correction_history,
         "auto_dashboard": {
             "enabled": auto_enabled,
             "llm_verify_enabled": bool(ocr_config.get("llm_verify_enabled")),
@@ -951,6 +1101,119 @@ async def ocr_status(request: Request, authorization: str | None = Header(defaul
         "latest_auto_output": latest_auto_output,
         "latest_auto_output_dirs": latest_auto_output_dirs,
         "recent_hardlink_view_folders": recent_views,
+    }
+
+
+@app.get("/api/ocr/corrections")
+async def list_ocr_corrections(request: Request, authorization: str | None = Header(default=None)):
+    _require_auth(request, authorization)
+    config = load_config_document(_config_path())
+    cover_dir = _cover_cache_dir(config)
+    output_dir = _ocr_output_dir(config)
+    state_db = _state_db(config)
+    try:
+        history_rows = _load_history_rows(state_db) if state_db.exists() else []
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read download history: {exc}") from exc
+    return {
+        "ok": True,
+        "output_dir": str(output_dir),
+        "items": _correctable_items(cover_dir, output_dir, history_rows),
+        "history": _load_correction_history(cover_dir),
+        **_ocr_counts(cover_dir),
+    }
+
+
+@app.post("/api/ocr/corrections/{message_id}/apply")
+async def apply_ocr_correction(
+    message_id: int,
+    payload: CorrectionApplyRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    _require_auth(request, authorization)
+    if message_id < 0:
+        raise HTTPException(status_code=400, detail="message_id must be non-negative")
+
+    title = _clean_required_text(payload.title)
+    episode = _clean_required_text(payload.episode)
+    if title is None:
+        raise HTTPException(status_code=400, detail="title is required for OCR correction")
+    if episode is None:
+        raise HTTPException(status_code=400, detail="episode is required for OCR correction")
+
+    config = load_config_document(_config_path())
+    cover_dir = _cover_cache_dir(config)
+    output_dir = _reject_output_inside_download(config, _ocr_output_dir(config))
+    state_db = _state_db(config)
+    if not state_db.exists():
+        raise HTTPException(status_code=400, detail=f"state_db does not exist: {state_db}")
+
+    try:
+        rows = _load_history_rows(state_db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read download history: {exc}") from exc
+    if message_id not in _history_rows_by_message_id(rows):
+        raise HTTPException(status_code=404, detail="message_id not found in download history")
+
+    auto_map_path = cover_dir / OCR_MAP_AUTO_FILE
+    auto_map = _load_auto_map_for_update(auto_map_path)
+    previous = auto_map.get(str(message_id))
+    if not isinstance(previous, dict):
+        previous = {}
+
+    confidence = payload.confidence if payload.confidence is not None else previous.get("confidence", 1.0)
+    corrected_at = _now()
+    auto_map[str(message_id)] = {
+        **previous,
+        "title": title,
+        "episode": episode,
+        "confidence": confidence,
+        "source": "web_correction",
+        "status": "corrected",
+        "corrected_at": corrected_at,
+        "updated_at": corrected_at,
+    }
+    ordered_auto_map = dict(sorted(auto_map.items(), key=lambda item: _message_id_sort_key(str(item[0]))))
+    _write_json_atomic(auto_map_path, ordered_auto_map)
+    removed_outputs = _remove_existing_outputs_for_message(output_dir, message_id)
+
+    try:
+        apply_result = create_hardlink_view(
+            rows,
+            ordered_auto_map,
+            cover_dir,
+            _download_dir(config),
+            output_dir,
+            None,
+            0.0,
+            False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"OCR correction apply failed: {exc}") from exc
+
+    history_row = {
+        "message_id": message_id,
+        "previous_title": _safe_text(previous.get("title")),
+        "previous_episode": _safe_text(previous.get("episode")),
+        "title": title,
+        "episode": episode,
+        "confidence": confidence,
+        "corrected_at": corrected_at,
+    }
+    _append_correction_history(cover_dir, history_row)
+
+    return {
+        "ok": True,
+        "status": "corrected",
+        "message_id": message_id,
+        "correction": history_row,
+        "removed_outputs": removed_outputs,
+        "apply": {"output_root": str(output_dir), **apply_result},
+        "planned_count": apply_result.get("planned", 0),
+        **_ocr_counts(cover_dir),
     }
 
 

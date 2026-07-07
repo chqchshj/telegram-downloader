@@ -403,7 +403,7 @@ async def test_apply_ocr_review_manual_values_updates_map_removes_review_and_org
     assert auto_map["1784"]["source"] == "web_review"
     assert "cover_path" not in auto_map["1784"]
     assert json.loads(review_path.read_text(encoding="utf-8")) == []
-    organized = output_dir / "ManualDrama" / "ManualDrama_EP12_1784.mp4"
+    organized = output_dir / "ManualDrama" / "ManualDrama_EP12.mp4"
     assert organized.exists()
     assert organized.stat().st_size == source.stat().st_size
     assert data["status"] == "applied"
