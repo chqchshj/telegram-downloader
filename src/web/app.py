@@ -1124,6 +1124,132 @@ async def list_ocr_corrections(request: Request, authorization: str | None = Hea
     }
 
 
+@app.get("/api/ocr/organized-all")
+async def list_organized_all(request: Request, authorization: str | None = Header(default=None)):
+    """List ALL organized items from the hardlink plan, grouped by series title."""
+    _require_auth(request, authorization)
+    config = load_config_document(_config_path())
+    output_dir = _ocr_output_dir(config)
+
+    plan_path = output_dir / PLAN_FILES["plan"]
+    if not plan_path.exists():
+        return {"ok": True, "series": [], "total_series": 0, "total_files": 0}
+
+    try:
+        plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"ok": True, "series": [], "total_series": 0, "total_files": 0}
+
+    if not isinstance(plan_data, list):
+        return {"ok": True, "series": [], "total_series": 0, "total_files": 0}
+
+    # Group by title
+    series_map: dict[str, list[dict[str, Any]]] = {}
+    for item in plan_data:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        series_map.setdefault(title, []).append(item)
+
+    # Load OCR map to check which items are already correctable
+    cover_dir = _cover_cache_dir(config)
+    auto_map = _read_json_or_http(cover_dir / OCR_MAP_AUTO_FILE, {})
+
+    series = []
+    for title in sorted(series_map, key=str.casefold):
+        items = series_map[title]
+        series_items = []
+        for item in items:
+            mid = _coerce_review_message_id(item.get("message_id"))
+            episode = item.get("episode")
+            target_str = item.get("target")
+            # Check if this message_id is already in OCR map (for correction)
+            in_map = str(mid) in auto_map if mid is not None else False
+            series_items.append({
+                "message_id": mid,
+                "episode": episode,
+                "target": target_str,
+                "source": item.get("source"),
+                "cover": item.get("cover"),
+                "in_ocr_map": in_map,
+            })
+        series.append({
+            "title": title,
+            "count": len(items),
+            "items": series_items,
+        })
+
+    return {
+        "ok": True,
+        "series": series,
+        "total_series": len(series),
+        "total_files": sum(s["count"] for s in series),
+    }
+
+
+@app.post("/api/ocr/sync-plan-to-map")
+async def sync_plan_to_map(request: Request, authorization: str | None = Header(default=None)):
+    """Sync all organized items from the hardlink plan into ocr_map_auto.json so they become correctable."""
+    _require_auth(request, authorization)
+    config = load_config_document(_config_path())
+    output_dir = _ocr_output_dir(config)
+    cover_dir = _cover_cache_dir(config)
+
+    plan_path = output_dir / PLAN_FILES["plan"]
+    if not plan_path.exists():
+        raise HTTPException(status_code=404, detail="No hardlink plan found")
+
+    try:
+        plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read plan: {exc}") from exc
+
+    if not isinstance(plan_data, list):
+        raise HTTPException(status_code=500, detail="Plan file must be a JSON array")
+
+    auto_map_path = cover_dir / OCR_MAP_AUTO_FILE
+    auto_map = _load_auto_map_for_update(auto_map_path)
+
+    synced: list[int] = []
+    for item in plan_data:
+        if not isinstance(item, dict):
+            continue
+        mid = _coerce_review_message_id(item.get("message_id"))
+        if mid is None:
+            continue
+        key = str(mid)
+        if key in auto_map:
+            continue  # Already in map, skip
+        title = str(item.get("title") or "").strip()
+        episode = item.get("episode")
+        if not title:
+            continue
+        auto_map[key] = {
+            "title": title,
+            "episode": episode,
+            "confidence": 1.0,
+            "source": "plan_sync",
+            "status": "synced",
+            "synced_at": _now(),
+            "updated_at": _now(),
+        }
+        synced.append(mid)
+
+    if synced:
+        ordered_auto_map = dict(sorted(auto_map.items(), key=lambda item: _message_id_sort_key(str(item[0]))))
+        _write_json_atomic(auto_map_path, ordered_auto_map)
+
+    return {
+        "ok": True,
+        "synced": len(synced),
+        "synced_message_ids": synced,
+        "total_in_map": len(auto_map),
+        **_ocr_counts(cover_dir),
+    }
+
+
 @app.post("/api/ocr/corrections/{message_id}/apply")
 async def apply_ocr_correction(
     message_id: int,

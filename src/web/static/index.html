@@ -269,6 +269,28 @@
     .correction-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(90px, 140px) minmax(90px, 140px) auto; gap: 8px; align-items: end; }
     .correction-toolbar input, .correction-toolbar select { padding: 8px 9px; }
     .correction-history { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+    .organized-list { display: grid; gap: 4px; max-height: 480px; overflow-y: auto; }
+    .organized-series { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+    .organized-series-header {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
+      padding: 8px 12px; cursor: pointer; align-items: center;
+      user-select: none;
+    }
+    .organized-series-header:hover { background: rgba(255,255,255,.03); }
+    .organized-series-header .title { font-weight: 600; font-size: 13px; }
+    .organized-series-header .badge { font-size: 11px; color: var(--muted); }
+    .organized-series-body { display: none; border-top: 1px solid var(--line); padding: 4px 8px; }
+    .organized-series.open .organized-series-body { display: grid; gap: 2px; }
+    .organized-item {
+      display: grid; grid-template-columns: auto 1fr auto;
+      gap: 8px; padding: 4px 8px; border-radius: 4px;
+      font-size: 12px; align-items: center; cursor: pointer;
+    }
+    .organized-item:hover { background: rgba(255,255,255,.05); }
+    .organized-item.selected { background: rgba(94,106,210,.15); }
+    .organized-item .ep { color: var(--soft); font-family: monospace; font-size: 11px; }
+    .organized-item .in-map { color: var(--good); font-size: 10px; }
+    .organized-item .not-in-map { color: var(--warn); font-size: 10px; }
     .review-item {
       display: grid;
       grid-template-columns: 72px minmax(0, 1fr);
@@ -550,6 +572,15 @@
             </div>
             <div id="ocrCorrectionDetail" class="review-source">暂无已整理条目</div>
             <div id="ocrCorrectionHistory" class="correction-history"></div>
+          </div>
+          <div id="ocrAllOrganizedPanel" class="card stack" style="margin-top: 12px;">
+            <div class="section-head">
+              <h2>全部已整理短剧</h2>
+              <span id="ocrAllCountBadge" class="pill">加载中…</span>
+              <button id="syncPlanToMapBtn" class="ghost" style="margin-left:8px;color:var(--warn);" title="将计划中所有条目同步到修正池（ocr_map_auto.json）后即可修正">同步全部到修正池</button>
+              <button id="refreshAllOrganizedBtn" class="ghost" style="margin-left:auto;">刷新</button>
+            </div>
+            <div id="ocrAllOrganizedList" class="organized-list"></div>
           </div>
         </div>
         <details id="ocrAdvancedPanel" class="advanced-panel">
@@ -927,11 +958,15 @@
         list.append(row);
       });
     }
+    function _epLabel(ep) {
+      if (!ep) return "";
+      return ep.toUpperCase().startsWith("EP") ? ` ${ep}` : ` EP${ep}`;
+    }
     function correctionOptionLabel(item) {
       return [
         item.message_id != null ? `消息 ${item.message_id}` : null,
         item.source_file_name || null,
-        item.title ? `${item.title}${item.episode ? ` EP${item.episode}` : ""}` : null,
+        item.title ? `${item.title}${_epLabel(item.episode)}` : null,
       ].filter(Boolean).join(" · ");
     }
     function selectedCorrectionItem() {
@@ -946,7 +981,7 @@
       }
       const confidence = confidenceLabel(item.confidence);
       detail.innerHTML = [
-        `<div><strong>当前识别：</strong>${escapeHtml(item.title || "未识别标题")}${item.episode ? ` EP${escapeHtml(item.episode)}` : ""}</div>`,
+        `<div><strong>当前识别：</strong>${escapeHtml(item.title || "未识别标题")}${_epLabel(item.episode)}</div>`,
         `<div><strong>消息：</strong>${escapeHtml(item.message_id)}${confidence ? ` · 置信度 ${escapeHtml(confidence)}` : ""}</div>`,
         item.source_file_name ? `<div><strong>原始文件：</strong>${escapeHtml(item.source_file_name)}</div>` : "",
         item.organized_path ? `<div><strong>整理位置：</strong>${escapeHtml(item.organized_path)}</div>` : "",
@@ -957,7 +992,7 @@
       target.innerHTML = "";
       (rows || []).slice(0, 3).forEach((row) => {
         const item = document.createElement("div");
-        item.textContent = `已修正 消息 ${row.message_id}: ${row.previous_title || "-"} EP${row.previous_episode || "-"} -> ${row.title || "-"} EP${row.episode || "-"}`;
+        item.textContent = `已修正 消息 ${row.message_id}: ${row.previous_title || "-"}${_epLabel(row.previous_episode)} -> ${row.title || "-"}${_epLabel(row.episode)}`;
         target.append(item);
       });
     }
@@ -1254,8 +1289,76 @@
       if (!$("planFolder").value && latest?.path) $("planFolder").value = latest.path;
       show("ocrStatus", data);
     }
+    let organizedAllData = null;
+    async function loadOrganizedAll() {
+      try {
+        const data = await api("/api/ocr/organized-all");
+        organizedAllData = data;
+        renderOrganizedAll(data);
+      } catch (e) {
+        $("ocrAllOrganizedList").innerHTML = `<div class="muted" style="padding:12px">加载失败: ${escapeHtml(String(e))}</div>`;
+      }
+    }
+    function renderOrganizedAll(data) {
+      const list = $("ocrAllOrganizedList");
+      list.innerHTML = "";
+      const series = data.series || [];
+      $("ocrAllCountBadge").textContent = `${data.total_series || 0} 部 / ${data.total_files || 0} 集`;
+      if (!series.length) {
+        list.innerHTML = '<div class="muted" style="padding:12px;text-align:center;">尚未整理任何短剧</div>';
+        return;
+      }
+      series.forEach((s) => {
+        const group = document.createElement("div");
+        group.className = "organized-series";
+        const header = document.createElement("div");
+        header.className = "organized-series-header";
+        header.innerHTML = `<span class="title">${escapeHtml(s.title)}</span><span class="badge">${s.count} 集</span><span class="muted" style="font-size:11px">▶</span>`;
+        const body = document.createElement("div");
+        body.className = "organized-series-body";
+        (s.items || []).forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "organized-item";
+          const ep = item.episode || "";
+          const showEp = ep.toUpperCase().startsWith("EP") ? ep : (ep ? `EP${ep}` : "?");
+          row.innerHTML = [
+            `<span class="ep">${escapeHtml(showEp)}</span>`,
+            `<span>${item.in_ocr_map ? "" : "⚠️ "}消息 ${item.message_id}</span>`,
+            `<span class="${item.in_ocr_map ? 'in-map' : 'not-in-map'}">${item.in_ocr_map ? "可修正" : "待同步"}</span>`,
+          ].join("");
+          row.addEventListener("click", () => {
+            // Populate the correction panel with this item
+            const select = $("ocrCorrectionSelect");
+            // Check if this message_id is already in the dropdown
+            const existingOption = Array.from(select.options).find((opt) => Number(opt.value) === item.message_id);
+            if (existingOption) {
+              select.value = item.message_id;
+              select.dispatchEvent(new Event("change"));
+            } else {
+              // Item not in correction list yet — show it in status and suggest syncing first
+              show("ocrStatus", {
+                info: `消息 ${item.message_id} (${s.title} ${showEp})`,
+                hint: "该条目尚未同步到修正池。点击「同步全部到修正池」按钮或先选取一条已有条目修改。",
+                item,
+              });
+            }
+            // Visual selection
+            body.querySelectorAll(".organized-item").forEach((el) => el.classList.remove("selected"));
+            row.classList.add("selected");
+          });
+          body.append(row);
+        });
+        header.addEventListener("click", () => {
+          group.classList.toggle("open");
+          header.querySelector("span:last-child").textContent = group.classList.contains("open") ? "▼" : "▶";
+        });
+        group.append(header, body);
+        list.append(group);
+      });
+    }
     async function loadOverview() {
       await Promise.all([loadStatus(), loadFileSummary(), loadOcrStatus(), loadTasks()]);
+      loadOrganizedAll().catch(console.error);
     }
     async function loadTasks() {
       const data = await api("/api/tasks");
@@ -1311,6 +1414,21 @@
     $("refreshLogsBtn").addEventListener("click", () => loadLogs().catch((e) => show("logDiagnostics", String(e))));
     $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("logDiagnostics", String(e))));
     $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcrStatus(), loadTasks()]).catch((e) => show("ocrStatus", String(e))));
+    $("refreshAllOrganizedBtn").addEventListener("click", () => loadOrganizedAll().catch((e) => show("ocrStatus", String(e))));
+    $("syncPlanToMapBtn").addEventListener("click", () => withButton($("syncPlanToMapBtn"), async () => {
+      const data = await api("/api/ocr/sync-plan-to-map", {method: "POST"});
+      show("ocrStatus", data);
+      // Reload both the organized list and the correction panel
+      await Promise.all([loadOcrStatus(), loadOrganizedAll()]);
+    }).catch((e) => show("ocrStatus", String(e))));
+    $("ocrCorrectionSelect").addEventListener("change", () => {
+      const item = selectedCorrectionItem();
+      if (item) {
+        $("ocrCorrectionTitle").value = item.title || "";
+        $("ocrCorrectionEpisode").value = item.episode || "";
+        renderCorrectionDetail(item);
+      }
+    });
     $("refreshTasksBtn").addEventListener("click", () => loadTasks().catch((e) => show("ocrStatus", String(e))));
     $("openAdvancedBtn").addEventListener("click", () => {
       $("ocrAdvancedPanel").open = true;
