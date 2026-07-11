@@ -129,8 +129,8 @@
     button.secondary { background: var(--panel-2); border-color: var(--line); color: #f4f4f5; }
     button.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
     button:disabled { opacity: .55; cursor: not-allowed; }
-    .check { display: flex; align-items: center; gap: 8px; color: #d4d4d8; }
-    .check input { width: auto; }
+    .check { display: flex; align-items: center; gap: 10px; color: #d4d4d8; cursor: pointer; }
+    .check input { width: auto; accent-color: var(--accent); width: 18px; height: 18px; }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -206,16 +206,17 @@
     body.locked .login-screen { display: grid; }
     body.locked header, body.locked main { display: none; }
     .login-card {
-      width: min(420px, 100%);
+      width: min(420px, 95%);
       border: 1px solid var(--line);
       background: #0f1011;
-      border-radius: 8px;
-      padding: 22px;
+      border-radius: 12px;
+      padding: 24px;
       display: grid;
-      gap: 16px;
+      gap: 14px;
       box-shadow: 0 24px 80px rgba(0,0,0,.42);
     }
-    .login-card h1 { font-size: 20px; }
+    .login-card h1 { font-size: 18px; }
+    .login-card .muted { font-size: 13px; line-height: 1.5; }
     .login-actions { display: grid; gap: 10px; }
     .error {
       display: none;
@@ -243,21 +244,82 @@
     td:nth-child(3), th:nth-child(3) { white-space: nowrap; width: 160px; color: var(--muted); }
     .debug-panel summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 650; }
     .debug-panel pre { margin-top: 12px; }
-    .ocr-dashboard { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr); gap: 14px; align-items: stretch; }
-    .ocr-dashboard .card:first-child { grid-row: span 2; }
-    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .ocr-dashboard { display: grid; gap: 14px; }
+    .ocr-auto-card { gap: 14px; }
+    .ocr-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .ocr-detail-row .card { min-height: 0; }
+    .ocr-detail-row .detail-list { border-top: 0; padding-top: 0; }
+    .ocr-detail-row .next-action { font-size: 15px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+    .metric-help {
+      margin: 0;
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.55;
+      padding: 8px 10px;
+      border: 1px dashed rgba(255,255,255,.08);
+      border-radius: 8px;
+      background: rgba(255,255,255,.018);
+    }
     .mini-metric {
       border: 1px solid var(--line);
-      background: rgba(255,255,255,.025);
-      border-radius: 8px;
-      padding: 12px;
-      min-height: 88px;
+      background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+      border-radius: 10px;
+      padding: 14px 12px;
+      min-height: 96px;
       display: grid;
-      gap: 6px;
+      gap: 8px;
       align-content: start;
+      position: relative;
     }
     .mini-metric span, .detail-row span { color: var(--muted); font-size: 12px; }
-    .mini-metric strong { font-size: 23px; font-weight: 650; }
+    .mini-metric .metric-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .01em;
+    }
+    .mini-metric strong {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      color: #fafafa;
+    }
+    .mini-metric .metric-hint {
+      color: var(--soft);
+      font-size: 11px;
+      line-height: 1.45;
+      font-weight: 500;
+    }
+    .mini-metric.metric-primary {
+      border-color: rgba(94,106,210,.35);
+      background: linear-gradient(180deg, rgba(94,106,210,.12), rgba(255,255,255,.02));
+    }
+    .mini-metric.metric-good strong { color: #7ddea0; }
+    .mini-metric.metric-warn strong { color: #f6c96b; }
+    .mini-metric.metric-accent strong { color: #c7d2fe; }
+    button.is-busy {
+      opacity: .78;
+      cursor: wait;
+    }
+    button.is-busy::after {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-left: 8px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      vertical-align: -1px;
+      animation: btn-spin .7s linear infinite;
+    }
+    @keyframes btn-spin { to { transform: rotate(360deg); } }
     .detail-list { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
     .detail-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; align-items: start; }
     .detail-row strong { font-size: 12px; font-weight: 600; color: #e4e4e7; overflow-wrap: anywhere; }
@@ -269,28 +331,115 @@
     .correction-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(90px, 140px) minmax(90px, 140px) auto; gap: 8px; align-items: end; }
     .correction-toolbar input, .correction-toolbar select { padding: 8px 9px; }
     .correction-history { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
-    .organized-list { display: grid; gap: 4px; max-height: 480px; overflow-y: auto; }
-    .organized-series { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+    .organized-list { display: grid; gap: 8px; max-height: 520px; overflow-y: auto; padding-right: 2px; }
+    .organized-panel-help {
+      margin: -4px 0 2px;
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .organized-series {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+    }
     .organized-series-header {
-      display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
-      padding: 8px 12px; cursor: pointer; align-items: center;
+      display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px;
+      padding: 11px 12px; cursor: pointer; align-items: center;
       user-select: none;
     }
-    .organized-series-header:hover { background: rgba(255,255,255,.03); }
-    .organized-series-header .title { font-weight: 600; font-size: 13px; }
-    .organized-series-header .badge { font-size: 11px; color: var(--muted); }
-    .organized-series-body { display: none; border-top: 1px solid var(--line); padding: 4px 8px; }
-    .organized-series.open .organized-series-body { display: grid; gap: 2px; }
-    .organized-item {
-      display: grid; grid-template-columns: auto 1fr auto;
-      gap: 8px; padding: 4px 8px; border-radius: 4px;
-      font-size: 12px; align-items: center; cursor: pointer;
+    .organized-series-header:hover { background: rgba(255,255,255,.035); }
+    .organized-series-header .title {
+      font-weight: 650;
+      font-size: 13px;
+      color: #f4f4f5;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
     }
-    .organized-item:hover { background: rgba(255,255,255,.05); }
-    .organized-item.selected { background: rgba(94,106,210,.15); }
-    .organized-item .ep { color: var(--soft); font-family: monospace; font-size: 11px; }
-    .organized-item .in-map { color: var(--good); font-size: 10px; }
-    .organized-item .not-in-map { color: var(--warn); font-size: 10px; }
+    .organized-series-header .badge {
+      font-size: 11px;
+      color: #d4d4d8;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      border-radius: 999px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .organized-series-header .chevron {
+      color: var(--muted);
+      font-size: 11px;
+      min-width: 14px;
+      text-align: center;
+    }
+    .organized-series-body { display: none; border-top: 1px solid var(--line); padding: 6px; background: rgba(0,0,0,.12); }
+    .organized-series.open .organized-series-body { display: grid; gap: 4px; }
+    .organized-item {
+      display: grid; grid-template-columns: 52px minmax(0, 1fr) auto;
+      gap: 10px; padding: 8px 10px; border-radius: 6px;
+      font-size: 12px; align-items: start; cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .organized-item:hover { background: rgba(255,255,255,.045); border-color: rgba(255,255,255,.04); }
+    .organized-item.selected {
+      background: rgba(94,106,210,.16);
+      border-color: rgba(94,106,210,.28);
+    }
+    .organized-item .ep {
+      color: #c7d2fe;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 650;
+      padding-top: 1px;
+      white-space: nowrap;
+    }
+    .organized-item .metadata { display: grid; gap: 3px; min-width: 0; }
+    .organized-item .msg {
+      color: #e4e4e7;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .organized-item .date {
+      color: var(--soft);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .organized-item .status-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+      border: 1px solid transparent;
+      margin-top: 1px;
+    }
+    .organized-item .in-map {
+      color: #7ddea0;
+      background: rgba(48,164,108,.12);
+      border-color: rgba(48,164,108,.28);
+    }
+    .organized-item .not-in-map {
+      color: #f6c96b;
+      background: rgba(245,165,36,.1);
+      border-color: rgba(245,165,36,.28);
+    }
+    #ocrAllOrganizedPanel .section-head {
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+    }
+    #ocrAllOrganizedPanel .section-head h2 { margin-right: 2px; }
+    #ocrAllOrganizedPanel .section-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-left: auto;
+    }
     .review-item {
       display: grid;
       grid-template-columns: 72px minmax(0, 1fr);
@@ -352,7 +501,27 @@
       border-radius: 8px;
       padding: 14px 16px;
     }
-    .advanced-panel summary { cursor: pointer; color: #f4f4f5; font-size: 14px; font-weight: 650; }
+    .advanced-panel summary {
+      cursor: pointer;
+      color: #f4f4f5;
+      font-size: 14px;
+      font-weight: 650;
+      padding: 4px 0;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .advanced-panel summary::before {
+      content: "▸";
+      font-size: 12px;
+      color: var(--muted);
+      transition: transform .2s;
+    }
+    .advanced-panel[open] summary::before {
+      transform: rotate(90deg);
+    }
+    .advanced-panel summary::-webkit-details-marker { display: none; }
     .advanced-content { display: grid; gap: 14px; margin-top: 14px; }
     .manual-tools { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(430px, 1.22fr); gap: 14px; align-items: start; }
     .manual-secondary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .75fr); gap: 14px; align-items: start; }
@@ -391,11 +560,71 @@
     .stack { display: grid; gap: 12px; }
     @media (max-width: 860px) {
       .bar, main { padding-left: 14px; padding-right: 14px; }
-      main, .wide-grid, .ocr-dashboard, .manual-tools, .manual-secondary { grid-template-columns: 1fr; }
-      .ocr-dashboard .card:first-child { grid-row: auto; }
+      main, .wide-grid, .ocr-detail-row, .manual-tools, .manual-secondary { grid-template-columns: 1fr; }
       .detail-row { grid-template-columns: 1fr; gap: 4px; }
       .review-form { grid-template-columns: 1fr; }
-      nav { position: static; display: grid; grid-template-columns: repeat(2, 1fr); }
+      nav {
+        position: sticky;
+        top: 56px;
+        z-index: 4;
+        display: flex;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 4px;
+        padding: 6px;
+        border-radius: 8px;
+      }
+      nav::-webkit-scrollbar { display: none; }
+      .tab {
+        flex: 0 0 auto;
+        width: auto;
+        white-space: nowrap;
+        padding: 8px 16px;
+        font-size: 13px;
+        border-radius: 20px;
+      }
+      .tab.active {
+        background: var(--accent);
+        color: #fff;
+      }
+      .section-head {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .section-head .pill { margin-left: 0; }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid { grid-template-columns: 1fr; }
+      .correction-toolbar { grid-template-columns: 1fr; }
+      .correction-toolbar button { width: 100%; }
+      table { font-size: 11px; }
+      th, td { padding: 8px; }
+      .review-item { grid-template-columns: 56px 1fr; }
+      .review-thumb, .review-thumb-empty { width: 56px; }
+      .bar { padding: 10px 14px; }
+      h1 { font-size: 16px; }
+      .header-actions { gap: 6px; }
+      .organized-series-header { grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+      .organized-item {
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: 8px;
+      }
+      .organized-item .status-chip {
+        grid-column: 2;
+        justify-self: start;
+        margin-top: 0;
+      }
+      .mini-metric { min-height: 88px; padding: 12px 10px; }
+      .mini-metric strong { font-size: 22px; }
+      #ocrAllOrganizedPanel .section-actions {
+        width: 100%;
+        margin-left: 0;
+      }
+      #ocrAllOrganizedPanel .section-actions button {
+        flex: 1 1 auto;
+      }
+      .header-sub { display: none; }
+      #authModePill { display: none; }
     }
   </style>
 </head>
@@ -404,7 +633,7 @@
     <div class="bar">
       <div>
         <h1>Telegram 下载器</h1>
-        <p class="muted">配置、下载状态与 OCR 整理工作台</p>
+        <p class="muted header-sub">配置、下载状态与 OCR 整理工作台</p>
       </div>
       <div class="header-actions">
         <span id="authModePill" class="pill"><i class="dot ok"></i> 已登录</span>
@@ -417,7 +646,7 @@
     <form id="loginForm" class="login-card">
       <div class="stack">
         <h1>登录控制台</h1>
-        <p class="muted">输入 TDL_WEB_TOKEN 后进入 Web 管理界面。</p>
+        <p class="muted">输入访问令牌进入管理界面</p>
       </div>
       <label>访问令牌
         <input id="loginToken" type="password" autocomplete="current-password" placeholder="TDL_WEB_TOKEN">
@@ -435,7 +664,7 @@
     <nav>
       <button class="tab active" data-view="overview">总览</button>
       <button class="tab" data-view="config">配置</button>
-      <button class="tab" data-view="ocr">OCR 整理</button>
+      <button class="tab" data-view="tools">工具</button>
       <button class="tab" data-view="logs">日志</button>
     </nav>
 
@@ -445,7 +674,10 @@
       <section id="overview" class="view active">
         <div class="toolbar">
           <h2>总览</h2>
-          <button id="refreshOverviewBtn" class="secondary">刷新</button>
+          <div class="row">
+            <button id="refreshOverviewBtn" class="secondary">刷新</button>
+            <button id="refreshOcrBtn" class="secondary">刷新 OCR</button>
+          </div>
         </div>
         <div class="grid">
           <div class="card metric"><span>健康状态</span><strong id="healthMetric">-</strong><div id="healthPill" class="pill"><i class="dot"></i> 未知</div></div>
@@ -453,15 +685,86 @@
           <div class="card metric"><span>媒体总大小</span><strong id="sizeMetric">0 B</strong><div class="path" id="downloadPath">-</div></div>
           <div class="card metric"><span>OCR 封面候选</span><strong id="coverMetric">0</strong><div class="path" id="coverPath">-</div></div>
         </div>
-        <div class="wide-grid">
-          <div class="card">
-            <div class="section-head"><h2>最新文件</h2><span class="pill" id="fileCountPill">0 个文件</span></div>
-            <div class="table-wrap"><table><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody id="latestFiles"></tbody></table></div>
+        <div class="card stack ocr-auto-card">
+          <div class="section-head">
+            <h2>自动整理</h2>
+            <span id="ocrAutoPill" class="pill"><i class="dot"></i> 未加载</span>
           </div>
-          <div class="card">
-            <div class="section-head"><h2>扩展名统计</h2></div>
-            <table><thead><tr><th>扩展名</th><th>数量</th></tr></thead><tbody id="extensionRows"></tbody></table>
+          <p class="metric-help">指标说明：封面候选是已发现、可供 OCR 识别的视频封面/缩略图数量（输入池），不是待人工复核项；待复核才表示需要人工确认。</p>
+          <div class="metric-grid">
+            <div class="mini-metric metric-primary metric-accent">
+              <div class="metric-label"><span>封面候选</span></div>
+              <strong id="ocrCoverCount">0</strong>
+              <div class="metric-hint">已提取的封面/缩略图，用于 OCR 识别剧名与集数</div>
+            </div>
+            <div class="mini-metric metric-good">
+              <div class="metric-label"><span>已识别</span></div>
+              <strong id="ocrAcceptedCount">0</strong>
+              <div class="metric-hint">OCR 已接受、可进入整理的结果</div>
+            </div>
+            <div class="mini-metric metric-warn">
+              <div class="metric-label"><span>待复核</span></div>
+              <strong id="ocrReviewCount">0</strong>
+              <div class="metric-hint">置信度偏低或信息不完整，需人工确认</div>
+            </div>
+            <div class="mini-metric">
+              <div class="metric-label"><span>已整理</span></div>
+              <strong id="ocrOrganizedCount">0</strong>
+              <div class="metric-hint">已生成硬链接/整理输出的条目</div>
+            </div>
           </div>
+          <div class="detail-list">
+            <div class="detail-row"><span>最近输出目录</span><strong id="ocrLatestOutput">-</strong></div>
+            <div class="detail-row"><span>输出文件数</span><strong id="ocrLatestFileCount">-</strong></div>
+          </div>
+        </div>
+        <div class="ocr-detail-row">
+          <div class="card stack">
+            <h2>Backfill 状态</h2>
+            <div class="detail-list">
+              <div class="detail-row"><span>最近扫描</span><strong id="ocrBackfillScanned">0 条</strong></div>
+              <div class="detail-row"><span>待处理</span><strong id="ocrBackfillDue">0 条</strong></div>
+              <div class="detail-row"><span>跳过原因</span><div id="ocrBackfillSkips" class="skip-list"></div></div>
+            </div>
+          </div>
+          <div class="card stack">
+            <h2>下一步</h2>
+            <div id="ocrNextAction" class="next-action">未加载</div>
+            <p id="ocrAutoHint" class="helper">刷新后显示当前自动整理状态。</p>
+          </div>
+        </div>
+        <div id="ocrReviewPanel" class="card stack review-panel" hidden>
+          <div class="section-head">
+            <h2>待复核</h2>
+            <button id="openAdvancedBtn" class="ghost">打开工具</button>
+          </div>
+          <div id="ocrReviewList" class="review-list"></div>
+        </div>
+        <div id="ocrCorrectionPanel" class="card stack review-panel">
+          <div class="section-head">
+            <h2>已整理条目 / 修正识别结果</h2>
+            <span id="ocrCorrectionCount" class="pill">0 条</span>
+          </div>
+          <div class="correction-toolbar">
+            <label>修正池条目 <select id="ocrCorrectionSelect"></select></label>
+            <label>修正标题 <input id="ocrCorrectionTitle" type="text" autocomplete="off"></label>
+            <label>修正集数 <input id="ocrCorrectionEpisode" type="text" autocomplete="off"></label>
+            <button id="ocrCorrectionApplyBtn" type="button">应用修正</button>
+          </div>
+          <div id="ocrCorrectionDetail" class="review-source">暂无已整理条目</div>
+          <div id="ocrCorrectionHistory" class="correction-history"></div>
+        </div>
+        <div id="ocrAllOrganizedPanel" class="card stack">
+          <div class="section-head">
+            <h2>全部已整理短剧</h2>
+            <span id="ocrAllCountBadge" class="pill">加载中…</span>
+            <div class="section-actions">
+              <button id="syncPlanToMapBtn" class="ghost" style="color:var(--warn);" title="将计划中所有条目同步到修正池（ocr_map_auto.json）后即可修正">同步全部到修正池</button>
+              <button id="refreshAllOrganizedBtn" class="ghost">刷新</button>
+            </div>
+          </div>
+          <p class="organized-panel-help">按剧名分组展示已整理条目。点击某一集可进入上方修正面板；绿色表示已在修正池，黄色表示可按文件路径修正。</p>
+          <div id="ocrAllOrganizedList" class="organized-list"></div>
         </div>
       </section>
 
@@ -498,138 +801,101 @@
           </div>
         </div>
         <div class="card stack">
-          <h2>过滤器、守护进程与代理</h2>
+          <h2>代理设置</h2>
+          <p class="helper">Telegram API 代理。启用后所有 Telegram 流量走此代理。</p>
+          <label class="check"><input id="proxyEnabled" type="checkbox"> 启用代理</label>
           <div class="grid">
-            <label>扩展名统计 <input id="extensions" type="text" placeholder=".mp4,.jpg,.jpeg,.png,.webp"></label>
-            <label>起始时间 <input id="onlyAfter" type="text" placeholder="2026-06-18T00:00:00+08:00"></label>
-            <label>截止时间 <input id="onlyBefore" type="text" placeholder="2026-07-01T00:00:00+08:00"></label>
-            <label>守护进程检查间隔（秒） <input id="daemonInterval" type="number" min="60" max="86400"></label>
-            <label class="check"><input id="daemonEnabled" type="checkbox"> 启用守护进程</label>
-            <label class="check"><input id="flatStructure" type="checkbox"> 平铺目录</label>
-            <label class="check"><input id="proxyEnabled" type="checkbox"> 启用代理</label>
             <label>协议 <select id="proxyScheme"><option value="socks5">socks5</option><option value="http">http</option></select></label>
-            <label>主机 <input id="proxyHost" type="text" placeholder="192.168.2.20"></label>
+            <label>主机 <input id="proxyHost" type="text" placeholder="127.0.0.1"></label>
             <label>端口 <input id="proxyPort" type="number" min="1" max="65535"></label>
-            <label>用户名 <input id="proxyUsername" type="text" autocomplete="off"></label>
+            <label>用户名 <input id="proxyUsername" type="text" autocomplete="off" placeholder="可选"></label>
             <label>密码 <input id="proxyPassword" type="password" autocomplete="off" placeholder="留空表示保留现有值"></label>
+          </div>
+        </div>
+        <details class="card stack advanced-panel">
+          <summary>高级设置</summary>
+          <div class="advanced-content">
+            <div class="quick-help">以下设置通常不需要修改，仅在需要精细控制下载范围或守护进程行为时使用。</div>
+            <div class="grid">
+              <label>下载文件扩展名 <input id="extensions" type="text" placeholder=".mp4,.jpg,.jpeg,.png,.webp"></label>
+              <label>起始时间 <input id="onlyAfter" type="text" placeholder="2026-06-18T00:00:00+08:00"></label>
+              <label>截止时间 <input id="onlyBefore" type="text" placeholder="2026-07-01T00:00:00+08:00"></label>
+              <label>守护进程检查间隔（秒） <input id="daemonInterval" type="number" min="60" max="86400"></label>
+              <label class="check"><input id="daemonEnabled" type="checkbox"> 启用守护进程</label>
+              <label class="check"><input id="flatStructure" type="checkbox"> 平铺目录</label>
+            </div>
+          </div>
+        </details>
+
+        <div class="wide-grid">
+          <div class="card">
+            <div class="section-head"><h2>最新文件</h2><span class="pill" id="fileCountPill">0 个文件</span></div>
+            <div class="table-wrap"><table><thead><tr><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody id="latestFiles"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="section-head"><h2>扩展名统计</h2></div>
+            <table><thead><tr><th>扩展名</th><th>数量</th></tr></thead><tbody id="extensionRows"></tbody></table>
           </div>
         </div>
         <pre id="result"></pre>
       </section>
 
-      <section id="ocr" class="view">
+      <section id="tools" class="view">
         <div class="toolbar">
-          <h2>OCR 整理</h2>
-          <button id="refreshOcrBtn" class="secondary">刷新</button>
+          <h2>工具</h2>
         </div>
-        <div class="ocr-dashboard">
-          <div class="card stack">
-            <div class="section-head">
-              <h2>自动整理</h2>
-              <span id="ocrAutoPill" class="pill"><i class="dot"></i> 未加载</span>
-            </div>
-            <div class="metric-grid">
-              <div class="mini-metric"><span>封面候选</span><strong id="ocrCoverCount">0</strong></div>
-              <div class="mini-metric"><span>已识别</span><strong id="ocrAcceptedCount">0</strong></div>
-              <div class="mini-metric"><span>待复核</span><strong id="ocrReviewCount">0</strong></div>
-              <div class="mini-metric"><span>已整理</span><strong id="ocrOrganizedCount">0</strong></div>
-            </div>
-            <div class="detail-list">
-              <div class="detail-row"><span>最近输出目录</span><strong id="ocrLatestOutput">-</strong></div>
-              <div class="detail-row"><span>输出文件数</span><strong id="ocrLatestFileCount">-</strong></div>
-            </div>
-          </div>
-          <div class="card stack">
-            <h2>Backfill 状态</h2>
-            <div class="detail-list">
-              <div class="detail-row"><span>最近扫描</span><strong id="ocrBackfillScanned">0 条</strong></div>
-              <div class="detail-row"><span>待处理</span><strong id="ocrBackfillDue">0 条</strong></div>
-              <div class="detail-row"><span>跳过原因</span><div id="ocrBackfillSkips" class="skip-list"></div></div>
-            </div>
-          </div>
-          <div class="card stack">
-            <h2>下一步</h2>
-            <div id="ocrNextAction" class="next-action">未加载</div>
-            <p id="ocrAutoHint" class="helper">刷新后显示当前自动整理状态。</p>
-          </div>
-          <div id="ocrReviewPanel" class="card stack review-panel" hidden>
-            <div class="section-head">
-              <h2>待复核</h2>
-              <button id="openAdvancedBtn" class="ghost">打开高级工具</button>
-            </div>
-            <div id="ocrReviewList" class="review-list"></div>
-          </div>
-          <div id="ocrCorrectionPanel" class="card stack review-panel">
-            <div class="section-head">
-              <h2>已整理条目 / 修正识别结果</h2>
-              <span id="ocrCorrectionCount" class="pill">0 条</span>
-            </div>
-            <div class="correction-toolbar">
-              <label>查找条目 <select id="ocrCorrectionSelect"></select></label>
-              <label>修正标题 <input id="ocrCorrectionTitle" type="text" autocomplete="off"></label>
-              <label>修正集数 <input id="ocrCorrectionEpisode" type="text" autocomplete="off"></label>
-              <button id="ocrCorrectionApplyBtn" type="button">应用修正</button>
-            </div>
-            <div id="ocrCorrectionDetail" class="review-source">暂无已整理条目</div>
-            <div id="ocrCorrectionHistory" class="correction-history"></div>
-          </div>
-          <div id="ocrAllOrganizedPanel" class="card stack" style="margin-top: 12px;">
-            <div class="section-head">
-              <h2>全部已整理短剧</h2>
-              <span id="ocrAllCountBadge" class="pill">加载中…</span>
-              <button id="syncPlanToMapBtn" class="ghost" style="margin-left:8px;color:var(--warn);" title="将计划中所有条目同步到修正池（ocr_map_auto.json）后即可修正">同步全部到修正池</button>
-              <button id="refreshAllOrganizedBtn" class="ghost" style="margin-left:auto;">刷新</button>
-            </div>
-            <div id="ocrAllOrganizedList" class="organized-list"></div>
-          </div>
+        <div class="manual-tools">
+          <section class="tool-block stack">
+            <h2>提取封面</h2>
+            <p class="helper">从 Telegram 频道下载的视频中提取封面截图，用于 OCR 识别。通常自动整理会自动处理，这里可以手动触发。</p>
+            <button id="extractBtn" style="padding:12px 20px;font-size:14px;">提取封面</button>
+            <details style="margin-top:4px;">
+              <summary style="cursor:pointer;color:var(--muted);font-size:12px;">高级选项</summary>
+              <div class="grid" style="margin-top:8px;">
+                <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0（默认第一个源）"></label>
+                <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="自动（从上次位置继续）"></label>
+                <label>输出目录 <input id="extractOutputDir" type="text" placeholder="使用配置的封面缓存目录"></label>
+              </div>
+            </details>
+          </section>
+          <section class="tool-block stack">
+            <h2>应用 OCR 映射</h2>
+            <p class="helper">批量应用 OCR 识别结果到文件。通常自动整理会自动处理，这里可以手动导入 JSON 映射文件或粘贴映射数据。</p>
+            <div class="quick-help">默认勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。</div>
+            <label>OCR 映射 JSON
+              <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
+            </label>
+            <details style="margin-top:4px;">
+              <summary style="cursor:pointer;color:var(--muted);font-size:12px;">展开高级选项</summary>
+              <div class="grid" style="margin-top:8px;">
+                <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
+                <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
+                <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
+                <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="可选"></label>
+                <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="使用配置默认值"></label>
+              </div>
+            </details>
+            <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
+            <button id="applyBtn">应用映射</button>
+          </section>
         </div>
-        <details id="ocrAdvancedPanel" class="advanced-panel">
-          <summary>高级工具 / 手动整理</summary>
-          <div class="advanced-content">
-            <div class="manual-tools">
-              <section class="tool-block stack">
-                <h2>提取封面</h2>
-                <div class="grid">
-                  <label>来源序号 <input id="extractSourceIndex" type="number" min="0" placeholder="0"></label>
-                  <label>最小消息 ID <input id="extractMinMessageId" type="number" min="0" placeholder="自动"></label>
-                  <label>输出目录 <input id="extractOutputDir" type="text" placeholder="使用配置的封面缓存目录"></label>
-                </div>
-                <button id="extractBtn">提取封面</button>
-              </section>
-              <section class="tool-block stack">
-                <h2>应用 OCR 映射</h2>
-                <div class="quick-help">默认勾选“仅预览”，不会创建硬链接；确认计划没问题后再取消勾选执行。手动整理会使用这里填写的整理输出目录，自动整理会直接平铺到配置的整理输出目录。</div>
-                <label>OCR 映射 JSON
-                  <textarea id="ocrMapJson" spellcheck="false" placeholder='{"1619":{"title":"短剧标题","episode":"1","confidence":0.98}}'></textarea>
-                </label>
-                <div class="grid">
-                  <label>OCR 映射文件路径 <input id="ocrMapPath" type="text" placeholder="/path/map.json"></label>
-                  <label>封面根目录 <input id="coverRoot" type="text" placeholder="使用配置的封面缓存目录"></label>
-                  <label>整理输出目录 <input id="outputRoot" type="text" placeholder="/downloads_ocr"></label>
-                  <label>原始来源文件夹 <input id="sourceFolder" type="text" placeholder="可选"></label>
-                  <label>最低置信度 <input id="minConfidence" type="number" min="0" max="1" step="0.01" placeholder="使用配置默认值"></label>
-                  <label class="check"><input id="dryRun" type="checkbox" checked> 仅预览（dry-run）</label>
-                </div>
-                <button id="applyBtn">应用映射</button>
-              </section>
-            </div>
-            <div class="manual-secondary">
-              <section class="tool-block">
-                <div class="section-head"><h2>后台任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
-                <div class="table-wrap"><table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table></div>
-              </section>
-              <section class="tool-block stack">
-                <h2>查看整理计划</h2>
-                <label>文件夹 <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
-                <button id="loadPlanBtn" class="secondary">加载计划</button>
-                <pre id="planOutput"></pre>
-              </section>
-            </div>
-            <section class="tool-block debug-panel">
-              <h2>原始状态</h2>
-              <pre id="ocrStatus"></pre>
-            </section>
-          </div>
+        <div class="manual-secondary">
+          <section class="tool-block">
+            <div class="section-head"><h2>后台任务</h2><button id="refreshTasksBtn" class="ghost">刷新</button></div>
+            <p class="helper">正在执行或已完成的后台任务（如提取封面、批量整理等）。</p>
+            <div class="table-wrap"><table><thead><tr><th>类型</th><th>状态</th><th>创建时间</th><th>详情</th></tr></thead><tbody id="tasksRows"></tbody></table></div>
+          </section>
+          <section class="tool-block stack">
+            <h2>查看整理计划</h2>
+            <p class="helper">查看自动整理生成的硬链接计划，确认整理结果是否正确。</p>
+            <label>文件夹 <input id="planFolder" type="text" placeholder="/downloads_ocr"></label>
+            <button id="loadPlanBtn" class="secondary">加载计划</button>
+            <pre id="planOutput"></pre>
+          </section>
+        </div>
+        <details class="card stack debug-panel">
+          <summary>原始状态（调试用）</summary>
+          <pre id="ocrStatus" style="margin-top:8px;"></pre>
         </details>
       </section>
 
@@ -646,10 +912,10 @@
           <div class="path" id="logPath">-</div>
           <pre id="logOutput" class="log-viewer"></pre>
         </div>
-        <div class="card stack">
-          <h2>诊断</h2>
+        <details class="card stack debug-panel">
+          <summary>诊断信息（调试用）</summary>
           <pre id="logDiagnostics" class="compact-json"></pre>
-        </div>
+        </details>
       </section>
     </div>
   </main>
@@ -659,6 +925,8 @@
     let currentConfig = {};
     let taskTimer = null;
     let ocrCorrectableItems = [];
+    window._selectedCorrectionTarget = null;
+    window._ocrCorrectionDirty = false;
     let currentToken = sessionStorage.getItem("tdlWebToken") || localStorage.getItem("tdlWebToken") || "";
     let tokenRequired = true;
 
@@ -704,6 +972,18 @@
       if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
       return date.toLocaleString("zh-CN", {month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"});
     }
+    function relativeTime(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+      const now = Date.now(), diff = now - date.getTime();
+      const abs = Math.abs(diff);
+      if (abs < 60000) return "刚刚";
+      if (abs < 3600000) return Math.floor(abs / 60000) + " 分钟前";
+      if (abs < 86400000) return Math.floor(abs / 3600000) + " 小时前";
+      if (abs < 604800000) return Math.floor(abs / 86400000) + " 天前";
+      return date.toLocaleString("zh-CN", {month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"});
+    }
     function cell(text) {
       const td = document.createElement("td");
       td.textContent = text == null ? "" : String(text);
@@ -725,12 +1005,18 @@
       if (!response.ok) throw new Error(JSON.stringify(data));
       return data;
     }
-    async function withButton(button, fn) {
+    async function withButton(button, fn, busyText = "处理中...") {
+      if (!button) return fn();
       const old = button.textContent;
       button.disabled = true;
-      button.textContent = "处理中...";
+      button.classList.add("is-busy");
+      button.textContent = busyText;
       try { return await fn(); }
-      finally { button.disabled = false; button.textContent = old; }
+      finally {
+        button.disabled = false;
+        button.classList.remove("is-busy");
+        button.textContent = old;
+      }
     }
     function healthLabel(health) {
       if (!health?.exists) return {text: "未知", dot: "warn"};
@@ -963,29 +1249,87 @@
       return ep.toUpperCase().startsWith("EP") ? ` ${ep}` : ` EP${ep}`;
     }
     function correctionOptionLabel(item) {
-      return [
-        item.message_id != null ? `消息 ${item.message_id}` : null,
-        item.source_file_name || null,
-        item.title ? `${item.title}${_epLabel(item.episode)}` : null,
-      ].filter(Boolean).join(" · ");
+      const parts = [];
+      // Title + episode first (most useful)
+      if (item.title) {
+        parts.push(`${item.title}${_epLabel(item.episode)}`);
+      }
+      // File path for path-based entries
+      if (item.organized_path) {
+        parts.push(item.organized_path);
+      }
+      // Original filename if available
+      if (item.source_file_name && !item.organized_path) {
+        parts.push(item.source_file_name);
+      }
+      // Message ID only for real positive IDs
+      if (item.message_id != null && Number(item.message_id) > 0) {
+        parts.push(`消息 ${item.message_id}`);
+      }
+      return parts.join(" · ") || `条目 ${item.message_id}`;
     }
     function selectedCorrectionItem() {
       const id = Number($("ocrCorrectionSelect").value);
       return ocrCorrectableItems.find((item) => Number(item.message_id) === id) || null;
     }
-    function renderCorrectionDetail(item) {
+    function correctionTargetFromItem(item) {
+      if (!item) return null;
+      return {
+        mode: "message_id",
+        message_id: item.message_id,
+        file_path: item.organized_path || null,
+        title: item.title || "",
+        episode: item.episode || "",
+        label: correctionOptionLabel(item),
+        source_file_name: item.source_file_name || "",
+        confidence: item.confidence,
+      };
+    }
+    function correctionTargetKey(target) {
+      if (!target) return "";
+      if (target.mode === "path") return `path:${target.file_path || ""}`;
+      return `message_id:${target.message_id}`;
+    }
+    function setCorrectionInputs(title, episode) {
+      $("ocrCorrectionTitle").value = title || "";
+      $("ocrCorrectionEpisode").value = episode || "";
+      window._ocrCorrectionDirty = false;
+    }
+    function renderCorrectionTargetDetail(target) {
       const detail = $("ocrCorrectionDetail");
-      if (!item) {
-        detail.textContent = "暂无已整理条目";
+      if (!target) {
+        detail.textContent = "请点击下方某一集，或从上方下拉框选择一条记录。";
         return;
       }
-      const confidence = confidenceLabel(item.confidence);
+      const modeText = target.mode === "path" ? "按文件路径修正" : "按消息 ID 修正";
+      const confidence = target.confidence == null ? "" : confidenceLabel(target.confidence);
       detail.innerHTML = [
-        `<div><strong>当前识别：</strong>${escapeHtml(item.title || "未识别标题")}${_epLabel(item.episode)}</div>`,
-        `<div><strong>消息：</strong>${escapeHtml(item.message_id)}${confidence ? ` · 置信度 ${escapeHtml(confidence)}` : ""}</div>`,
-        item.source_file_name ? `<div><strong>原始文件：</strong>${escapeHtml(item.source_file_name)}</div>` : "",
-        item.organized_path ? `<div><strong>整理位置：</strong>${escapeHtml(item.organized_path)}</div>` : "",
+        `<div><strong>正在编辑：</strong>${escapeHtml(target.title || "未识别标题")}${_epLabel(target.episode)}</div>`,
+        `<div><strong>修正方式：</strong>${escapeHtml(modeText)}</div>`,
+        target.file_path ? `<div><strong>文件路径：</strong>${escapeHtml(target.file_path)}</div>` : "",
+        target.message_id != null ? `<div><strong>消息：</strong>${escapeHtml(target.message_id)}${confidence ? ` · 置信度 ${escapeHtml(confidence)}` : ""}</div>` : "",
+        target.source_file_name ? `<div><strong>原始文件：</strong>${escapeHtml(target.source_file_name)}</div>` : "",
       ].filter(Boolean).join("");
+    }
+    function setCorrectionTarget(target, options = {}) {
+      window._selectedCorrectionTarget = target || null;
+      if (!target) {
+        renderCorrectionTargetDetail(null);
+        return;
+      }
+      if (options.populate !== false) {
+        setCorrectionInputs(target.title || "", target.episode || "");
+      }
+      renderCorrectionTargetDetail(target);
+    }
+    function updateOrganizedSelection() {
+      const key = correctionTargetKey(window._selectedCorrectionTarget);
+      document.querySelectorAll("#ocrAllOrganizedList .organized-item").forEach((row) => {
+        row.classList.toggle("selected", row.dataset.targetKey === key && key !== "");
+      });
+    }
+    function renderCorrectionDetail(item) {
+      renderCorrectionTargetDetail(correctionTargetFromItem(item));
     }
     function renderCorrectionHistory(rows) {
       const target = $("ocrCorrectionHistory");
@@ -1007,9 +1351,12 @@
         option.value = "";
         option.textContent = "暂无已整理条目";
         select.append(option);
-        $("ocrCorrectionTitle").value = "";
-        $("ocrCorrectionEpisode").value = "";
-        renderCorrectionDetail(null);
+        if (!window._selectedCorrectionTarget && !window._ocrCorrectionDirty) {
+          setCorrectionInputs("", "");
+          renderCorrectionDetail(null);
+        } else if (window._selectedCorrectionTarget) {
+          renderCorrectionTargetDetail(window._selectedCorrectionTarget);
+        }
         renderCorrectionHistory(history || []);
         return;
       }
@@ -1023,26 +1370,50 @@
         select.value = previous;
       }
       const item = selectedCorrectionItem();
-      $("ocrCorrectionTitle").value = item?.title || "";
-      $("ocrCorrectionEpisode").value = item?.episode || "";
-      renderCorrectionDetail(item);
+      if (!window._selectedCorrectionTarget && !window._ocrCorrectionDirty && item) {
+        setCorrectionTarget(correctionTargetFromItem(item));
+      } else if (window._selectedCorrectionTarget) {
+        renderCorrectionTargetDetail(window._selectedCorrectionTarget);
+      }
       renderCorrectionHistory(history || []);
     }
     async function applyOcrCorrection(button) {
-      const item = selectedCorrectionItem();
+      const target = window._selectedCorrectionTarget;
       const title = $("ocrCorrectionTitle").value.trim();
       const episode = $("ocrCorrectionEpisode").value.trim();
-      if (!item || !title || !episode) {
-        show("ocrStatus", {error: "请选择条目并填写标题和集数。"});
+      if (!title || !episode) {
+        show("ocrStatus", {error: "请填写标题和集数。"});
+        return;
+      }
+      if (!target) {
+        show("ocrStatus", {error: "请先点击下方某一集，或从上方下拉框选择一条记录。"});
         return;
       }
       await withButton(button, async () => {
-        const data = await api(`/api/ocr/corrections/${encodeURIComponent(item.message_id)}/apply`, {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({title, episode}),
-        });
-        const status = await loadOcrStatus();
+        let data;
+        if (target.mode === "path") {
+          if (!target.file_path) {
+            show("ocrStatus", {error: "所选条目缺少文件路径，请重新选择下方剧集。"});
+            return;
+          }
+          data = await api("/api/ocr/correct-by-path", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({file_path: target.file_path, title, episode}),
+          });
+        } else if (target.mode === "message_id") {
+          data = await api(`/api/ocr/corrections/${encodeURIComponent(target.message_id)}/apply`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({title, episode}),
+          });
+        } else {
+          show("ocrStatus", {error: "未知修正目标，请重新选择条目。"});
+          return;
+        }
+        window._ocrCorrectionDirty = false;
+        window._selectedCorrectionTarget = null;
+        const [status] = await Promise.all([loadOcrStatus(), loadOrganizedAll()]);
         show("ocrStatus", {correction_result: data, status});
       });
     }
@@ -1179,7 +1550,7 @@
       $("statePath").textContent = data.state?.path || "-";
       const health = healthLabel(data.health_status);
       $("healthMetric").textContent = health.text;
-      $("healthPill").innerHTML = `<i class="dot ${health.dot}"></i>${data.health_status?.timestamp || "无时间戳"}`;
+      $("healthPill").innerHTML = `<i class="dot ${health.dot}"></i>${relativeTime(data.health_status?.timestamp) || "无时间戳"}`;
     }
     function compactDiagnostics(status, logs = null) {
       const state = status.state || {};
@@ -1299,6 +1670,22 @@
         $("ocrAllOrganizedList").innerHTML = `<div class="muted" style="padding:12px">加载失败: ${escapeHtml(String(e))}</div>`;
       }
     }
+    function formatOrganizedDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      const pad = (number) => String(number).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+    function organizedDateMetadata(item) {
+      const downloaded = formatOrganizedDate(item.downloaded_at);
+      const organized = formatOrganizedDate(item.organized_at);
+      if (downloaded && organized) {
+        const difference = Math.abs(new Date(item.downloaded_at).getTime() - new Date(item.organized_at).getTime());
+        return difference >= 60000 ? `下载 ${downloaded} · 整理 ${organized}` : `下载 ${downloaded}`;
+      }
+      return downloaded ? `下载 ${downloaded}` : (organized ? `整理 ${organized}` : "");
+    }
     function renderOrganizedAll(data) {
       const list = $("ocrAllOrganizedList");
       list.innerHTML = "";
@@ -1313,7 +1700,7 @@
         group.className = "organized-series";
         const header = document.createElement("div");
         header.className = "organized-series-header";
-        header.innerHTML = `<span class="title">${escapeHtml(s.title)}</span><span class="badge">${s.count} 集</span><span class="muted" style="font-size:11px">▶</span>`;
+        header.innerHTML = `<span class="title">${escapeHtml(s.title)}</span><span class="badge">${s.count} 集</span><span class="chevron" aria-hidden="true">▶</span>`;
         const body = document.createElement("div");
         body.className = "organized-series-body";
         (s.items || []).forEach((item) => {
@@ -1321,40 +1708,40 @@
           row.className = "organized-item";
           const ep = item.episode || "";
           const showEp = ep.toUpperCase().startsWith("EP") ? ep : (ep ? `EP${ep}` : "?");
+          const target = {
+            mode: "path",
+            file_path: item.target || "",
+            message_id: item.message_id,
+            title: s.title || "",
+            episode: (item.episode || "").replace(/^EP/i, ""),
+            label: `${s.title || "未命名短剧"} ${showEp}`,
+          };
+          row.dataset.targetKey = correctionTargetKey(target);
+          const statusText = item.in_ocr_map ? "可修正" : "按路径修正";
+          const messageText = item.message_id != null ? `消息 ${item.message_id}` : "未入库，可直接修正";
+          const dateText = organizedDateMetadata(item);
           row.innerHTML = [
             `<span class="ep">${escapeHtml(showEp)}</span>`,
-            `<span>${item.in_ocr_map ? "" : "⚠️ "}消息 ${item.message_id}</span>`,
-            `<span class="${item.in_ocr_map ? 'in-map' : 'not-in-map'}">${item.in_ocr_map ? "可修正" : "待同步"}</span>`,
+            `<span class="metadata"><span class="msg">${escapeHtml(messageText)}</span>${dateText ? `<span class="date">${escapeHtml(dateText)}</span>` : ""}</span>`,
+            `<span class="status-chip ${item.in_ocr_map ? 'in-map' : 'not-in-map'}">${escapeHtml(statusText)}</span>`,
           ].join("");
           row.addEventListener("click", () => {
-            // Populate the correction panel with this item
-            const select = $("ocrCorrectionSelect");
-            // Check if this message_id is already in the dropdown
-            const existingOption = Array.from(select.options).find((opt) => Number(opt.value) === item.message_id);
-            if (existingOption) {
-              select.value = item.message_id;
-              select.dispatchEvent(new Event("change"));
-            } else {
-              // Item not in correction list yet — show it in status and suggest syncing first
-              show("ocrStatus", {
-                info: `消息 ${item.message_id} (${s.title} ${showEp})`,
-                hint: "该条目尚未同步到修正池。点击「同步全部到修正池」按钮或先选取一条已有条目修改。",
-                item,
-              });
-            }
-            // Visual selection
-            body.querySelectorAll(".organized-item").forEach((el) => el.classList.remove("selected"));
-            row.classList.add("selected");
+            $("ocrCorrectionSelect").selectedIndex = -1;
+            setCorrectionTarget(target);
+            updateOrganizedSelection();
+            $("ocrCorrectionPanel").scrollIntoView({behavior: "smooth", block: "start"});
           });
           body.append(row);
         });
         header.addEventListener("click", () => {
           group.classList.toggle("open");
-          header.querySelector("span:last-child").textContent = group.classList.contains("open") ? "▼" : "▶";
+          const chevron = header.querySelector(".chevron");
+          if (chevron) chevron.textContent = group.classList.contains("open") ? "▼" : "▶";
         });
         group.append(header, body);
         list.append(group);
       });
+      updateOrganizedSelection();
     }
     async function loadOverview() {
       await Promise.all([loadStatus(), loadFileSummary(), loadOcrStatus(), loadTasks()]);
@@ -1413,26 +1800,32 @@
     $("saveBtn").addEventListener("click", () => withButton($("saveBtn"), saveConfig).catch((e) => show("result", String(e))));
     $("refreshLogsBtn").addEventListener("click", () => loadLogs().catch((e) => show("logDiagnostics", String(e))));
     $("refreshOverviewBtn").addEventListener("click", () => loadOverview().catch((e) => show("logDiagnostics", String(e))));
-    $("refreshOcrBtn").addEventListener("click", () => Promise.all([loadOcrStatus(), loadTasks()]).catch((e) => show("ocrStatus", String(e))));
-    $("refreshAllOrganizedBtn").addEventListener("click", () => loadOrganizedAll().catch((e) => show("ocrStatus", String(e))));
+    $("refreshOcrBtn").addEventListener("click", () => withButton($("refreshOcrBtn"), () => Promise.all([loadOcrStatus(), loadTasks()]), "刷新中...").catch((e) => show("ocrStatus", String(e))));
+    $("refreshAllOrganizedBtn").addEventListener("click", () => withButton($("refreshAllOrganizedBtn"), () => loadOrganizedAll(), "刷新中...").catch((e) => show("ocrStatus", String(e))));
+    $("ocrCorrectionApplyBtn").addEventListener("click", () => applyOcrCorrection($("ocrCorrectionApplyBtn")).catch((e) => show("ocrStatus", String(e))));
+    $("ocrCorrectionTitle").addEventListener("input", () => { window._ocrCorrectionDirty = true; });
+    $("ocrCorrectionEpisode").addEventListener("input", () => { window._ocrCorrectionDirty = true; });
     $("syncPlanToMapBtn").addEventListener("click", () => withButton($("syncPlanToMapBtn"), async () => {
-      const data = await api("/api/ocr/sync-plan-to-map", {method: "POST"});
+      const data = await api("/api/ocr/sync-all-to-map", {method: "POST"});
       show("ocrStatus", data);
       // Reload both the organized list and the correction panel
       await Promise.all([loadOcrStatus(), loadOrganizedAll()]);
-    }).catch((e) => show("ocrStatus", String(e))));
+    }, "同步中...").catch((e) => show("ocrStatus", String(e))));
     $("ocrCorrectionSelect").addEventListener("change", () => {
       const item = selectedCorrectionItem();
       if (item) {
-        $("ocrCorrectionTitle").value = item.title || "";
-        $("ocrCorrectionEpisode").value = item.episode || "";
-        renderCorrectionDetail(item);
+        setCorrectionTarget(correctionTargetFromItem(item));
+        updateOrganizedSelection();
       }
     });
     $("refreshTasksBtn").addEventListener("click", () => loadTasks().catch((e) => show("ocrStatus", String(e))));
     $("openAdvancedBtn").addEventListener("click", () => {
-      $("ocrAdvancedPanel").open = true;
-      $("ocrAdvancedPanel").scrollIntoView({block: "start"});
+      document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
+      document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
+      const toolsTab = document.querySelector('.tab[data-view="tools"]');
+      if (toolsTab) toolsTab.classList.add("active");
+      $("tools").classList.add("active");
+      $("tools").scrollIntoView({block: "start"});
     });
     $("extractBtn").addEventListener("click", () => withButton($("extractBtn"), async () => {
       const payload = {

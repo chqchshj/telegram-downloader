@@ -9,7 +9,7 @@
 - Fork 分支：`feat/ai-short-drama-web-config`
 - 已实现：
   - Pyrogram 原生代理配置：`socks5` / `http`
-  - 家里 WARP 节点 compose 示例：`socks5://192.168.2.20:40000`
+  - 家里 WARP 节点 compose 示例：`socks5://your-proxy-host:40000`
   - Telegram 原生 `photo` 下载
   - `.mp4,.jpg,.jpeg,.png,.webp` 过滤
   - 中文文件名/目录名保留

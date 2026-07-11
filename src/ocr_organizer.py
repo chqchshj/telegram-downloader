@@ -32,7 +32,7 @@ COVER_SUFFIX = ".jpg"
 OCR_MAP_AUTO_FILE = "ocr_map_auto.json"
 OCR_REVIEW_QUEUE_FILE = "ocr_review_queue.json"
 OCR_VERIFY_RAW_FILE = "ocr_verify_raw.json"
-DEFAULT_LLM_BASE_URL = "http://192.168.2.3:8318/v1"
+DEFAULT_LLM_BASE_URL = os.getenv("TDL_LLM_BASE_URL", "http://localhost:8080/v1")
 DEFAULT_OCR_BACKFILL_RECENT_LIMIT = 50
 
 
@@ -617,6 +617,63 @@ def _normalize_llm_result(
     }
 
 
+def _episode_number(value: Any) -> int | None:
+    suffix = normalize_episode_suffix(value)
+    if not suffix:
+        return None
+    match = re.search(r"\d+", suffix)
+    return int(match.group(0)) if match else None
+
+
+def _assign_missing_episodes_by_title(
+    results: list[dict[str, Any]],
+    existing_map: dict[str, Any] | None = None,
+) -> None:
+    """Fill missing episode numbers with EP01/EP02... per title.
+
+    Cover OCR sometimes recognizes the drama title but not the episode number.
+    Instead of sending such rows to manual review, assign the smallest available
+    episode number for that title, considering existing accepted rows and this
+    batch's explicitly recognized episodes.  This matches the media-organizer
+    expectation: same-title files become sequential episodes.
+    """
+    used_by_title: dict[str, set[int]] = {}
+
+    def title_key(value: Any) -> str:
+        return str(value or "").strip().casefold()
+
+    def reserve(title: Any, episode: Any) -> None:
+        key = title_key(title)
+        number = _episode_number(episode)
+        if key and number is not None:
+            used_by_title.setdefault(key, set()).add(number)
+
+    for entry in (existing_map or {}).values():
+        if isinstance(entry, dict):
+            reserve(entry.get("title"), entry.get("episode"))
+
+    for result in results:
+        reserve(result.get("title"), result.get("episode"))
+
+    for result in results:
+        if result.get("status") != "model_ok":
+            continue
+        title = str(result.get("title") or "").strip()
+        if not title or normalize_episode_suffix(result.get("episode")):
+            continue
+        key = title.casefold()
+        used = used_by_title.setdefault(key, set())
+        episode_no = 1
+        while episode_no in used:
+            episode_no += 1
+        used.add(episode_no)
+        result["episode"] = f"EP{episode_no:02d}"
+        result["episode_auto_assigned"] = True
+        reason = str(result.get("reason") or "").strip()
+        note = f"episode auto-assigned as EP{episode_no:02d} because OCR missed episode"
+        result["reason"] = f"{reason}; {note}" if reason else note
+
+
 def _review_reason(
     result: dict[str, Any],
     *,
@@ -692,24 +749,7 @@ def verify_cover_manifests(
                 status="error",
             )
 
-        reason = _review_reason(
-            result,
-            min_confidence=min_confidence,
-            require_episode=require_episode,
-            reject_non_drama=reject_non_drama,
-        )
         raw.append(result)
-        if reason is None:
-            accepted[str(result["message_id"])] = {
-                "title": result["title"],
-                "episode": result["episode"],
-                "confidence": result["confidence"],
-                "is_drama": result["is_drama"],
-                "reason": result["reason"],
-                "cover_path": result["cover_path"],
-            }
-        else:
-            review.append({**result, "review_reason": reason})
 
     map_path = output / OCR_MAP_AUTO_FILE
     review_path = output / OCR_REVIEW_QUEUE_FILE
@@ -718,6 +758,27 @@ def verify_cover_manifests(
     merged_accepted = _load_ocr_map(map_path)
     merged_review = _load_message_rows(review_path)
     merged_raw = _load_message_rows(raw_path)
+
+    _assign_missing_episodes_by_title(raw, merged_accepted)
+    for result in raw:
+        reason = _review_reason(
+            result,
+            min_confidence=min_confidence,
+            require_episode=require_episode,
+            reject_non_drama=reject_non_drama,
+        )
+        if reason is None:
+            accepted[str(result["message_id"])] = {
+                "title": result["title"],
+                "episode": result["episode"],
+                "confidence": result["confidence"],
+                "is_drama": result["is_drama"],
+                "reason": result["reason"],
+                "cover_path": result["cover_path"],
+                "episode_auto_assigned": bool(result.get("episode_auto_assigned")),
+            }
+        else:
+            review.append({**result, "review_reason": reason})
 
     for result in raw:
         message_id = _coerce_message_id(result.get("message_id"))

@@ -15,7 +15,7 @@ services:
       TDL_FLAT_STRUCTURE: "false"
       TDL_PROXY_ENABLED: "true"
       TDL_PROXY_SCHEME: socks5
-      TDL_PROXY_HOST: 192.168.2.20
+      TDL_PROXY_HOST: your-proxy-host
       TDL_PROXY_PORT: "40000"
     volumes:
       - ./downloads:/downloads

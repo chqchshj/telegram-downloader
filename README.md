@@ -181,14 +181,14 @@ Pyrogram does not use generic `HTTP_PROXY`/`HTTPS_PROXY` variables for MTProto t
 ```yaml
 - TDL_PROXY_ENABLED=true
 - TDL_PROXY_SCHEME=socks5
-- TDL_PROXY_HOST=192.168.2.20
+- TDL_PROXY_HOST=your-proxy-host
 - TDL_PROXY_PORT=40000
 # Optional:
 - TDL_PROXY_USERNAME=
 - TDL_PROXY_PASSWORD=
 ```
 
-The default home WARP SOCKS5 example is `socks5://192.168.2.20:40000`.
+The default home WARP SOCKS5 example is `socks5://your-proxy-host:40000`.
 
 ### Web Config Panel
 
